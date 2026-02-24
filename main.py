@@ -31,7 +31,9 @@ def save_data(data):
 @client.event
 async def on_ready():
     print(f"Bot online como {client.user}")
-    check_energy.start()
+
+    if not check_energy.is_running():
+        check_energy.start()
 
 @client.event
 async def on_message(message):
@@ -42,7 +44,6 @@ async def on_message(message):
         content = message.content.lower().strip()
         data = load_data()
 
-        # STATUS
         if content == "status":
             if str(message.author.id) not in data:
                 await message.channel.send("Nenhum contador ativo. Envie sua energia atual.")
@@ -62,7 +63,6 @@ async def on_message(message):
             )
             return
 
-        # RECEBER NÚMERO
         try:
             current_energy = int(content)
         except:
@@ -97,7 +97,7 @@ async def check_energy():
 
         if now >= finish_time:
             user = await client.fetch_user(int(user_id))
-            await user.send("🔥 Energia cheia! Hora de dungeon no PokeXGames!")
+            await user.send("🔥 Energia cheia! Hora de Mistery Dungeon!")
             del data[user_id]
             save_data(data)
 

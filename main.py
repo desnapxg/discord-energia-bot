@@ -3,12 +3,14 @@ from discord.ext import tasks
 import os
 import json
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 TOKEN = os.getenv("TOKEN")
 
 MAX_ENERGY = 100
 RECHARGE_MINUTES = 30
 DATA_FILE = "data.json"
+BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -40,7 +42,7 @@ async def on_message(message):
         content = message.content.lower().strip()
         data = load_data()
 
-        # STATUS COMMAND
+        # STATUS
         if content == "status":
             if str(message.author.id) not in data:
                 await message.channel.send("Nenhum contador ativo. Envie sua energia atual.")
@@ -53,19 +55,14 @@ async def on_message(message):
                 await message.channel.send("🔋 Sua energia já está cheia!")
                 return
 
-            remaining_time = finish_time - now
-            minutes_left = int(remaining_time.total_seconds() / 60)
-            energy_left = minutes_left // RECHARGE_MINUTES
-            current_energy = MAX_ENERGY - energy_left
+            finish_brasilia = finish_time.replace(tzinfo=ZoneInfo("UTC")).astimezone(BRASILIA)
 
             await message.channel.send(
-                f"⚡ Energia atual estimada: {current_energy}\n"
-                f"Faltam aproximadamente {minutes_left} minutos.\n"
-                f"Vai encher às {finish_time.strftime('%H:%M')} (UTC)."
+                f"⚡ Sua energia vai encher às {finish_brasilia.strftime('%H:%M')} (horário de Brasília)."
             )
             return
 
-        # NUMBER INPUT
+        # NÚMERO
         try:
             current_energy = int(content)
         except:
@@ -83,11 +80,11 @@ async def on_message(message):
         data[str(message.author.id)] = finish_time.isoformat()
         save_data(data)
 
+        finish_brasilia = finish_time.replace(tzinfo=ZoneInfo("UTC")).astimezone(BRASILIA)
+
         await message.channel.send(
             f"⚡ Energia registrada: {current_energy}\n"
-            f"Faltam {missing} energias.\n"
-            f"⏳ Vai encher às {finish_time.strftime('%H:%M')} (UTC).\n"
-            f"Aproximadamente {minutes_needed} minutos."
+            f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M')} (horário de Brasília)."
         )
 
 @tasks.loop(minutes=1)

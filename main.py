@@ -58,7 +58,7 @@ async def on_message(message):
             now = datetime.now(timezone.utc)
 
             if now >= finish_time:
-                await message.channel.send("🔋 Sua energia atual é 100.\nSua energia já está cheia!")
+                await message.channel.send("🔋 Sua energia atual é 100.\n\nSua energia já está cheia!")
                 return
 
             # Cálculo da energia atual baseado no tempo restante
@@ -71,7 +71,7 @@ async def on_message(message):
             finish_brasilia = finish_time.astimezone(BRASILIA)
 
             await message.channel.send(
-                f"⚡ Sua energia atual é **{current_energy}**.\n"
+                f"⚡ Sua energia atual é **{current_energy}**.\n\n"
                 f"🔋 Sua energia ficará cheia às **{finish_brasilia.strftime('%H:%M')}** do dia **{finish_brasilia.strftime('%d/%m/%Y')}**."
             )
             return
@@ -99,7 +99,7 @@ async def on_message(message):
         finish_brasilia = finish_time.astimezone(BRASILIA)
 
         await message.channel.send(
-            f"✅ Energia registrada: **{current_energy}**.\n"
+            f"✅ Energia registrada: **{current_energy}**.\n\n"
             f"🔋 Sua energia ficará cheia às **{finish_brasilia.strftime('%H:%M')}** do dia **{finish_brasilia.strftime('%d/%m/%Y')}**."
         )
 

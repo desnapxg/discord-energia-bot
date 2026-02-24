@@ -42,7 +42,7 @@ async def on_message(message):
         content = message.content.lower().strip()
         data = load_data()
 
-        # COMANDO STATUS
+        # STATUS
         if content == "status":
             if str(message.author.id) not in data:
                 await message.channel.send("Nenhum contador ativo. Envie sua energia atual.")
@@ -58,7 +58,7 @@ async def on_message(message):
             finish_brasilia = finish_time.replace(tzinfo=ZoneInfo("UTC")).astimezone(BRASILIA)
 
             await message.channel.send(
-                f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M')}"
+                f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M do dia %d/%m/%Y')}"
             )
             return
 
@@ -84,7 +84,7 @@ async def on_message(message):
 
         await message.channel.send(
             f"⚡ Energia registrada: {current_energy}\n\n"
-            f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M')}"
+            f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M do dia %d/%m/%Y.')}"
         )
 
 @tasks.loop(minutes=1)
@@ -97,7 +97,7 @@ async def check_energy():
 
         if now >= finish_time:
             user = await client.fetch_user(int(user_id))
-            await user.send("🔥 Energia cheia! Hora de fazer Mistery Dungeon!")
+            await user.send("🔥 Energia cheia! Hora de dungeon no PokeXGames!")
             del data[user_id]
             save_data(data)
 

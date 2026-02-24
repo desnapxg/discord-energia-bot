@@ -42,7 +42,7 @@ async def on_message(message):
         content = message.content.lower().strip()
         data = load_data()
 
-        # STATUS
+        # COMANDO STATUS
         if content == "status":
             if str(message.author.id) not in data:
                 await message.channel.send("Nenhum contador ativo. Envie sua energia atual.")
@@ -58,11 +58,11 @@ async def on_message(message):
             finish_brasilia = finish_time.replace(tzinfo=ZoneInfo("UTC")).astimezone(BRASILIA)
 
             await message.channel.send(
-                f"⚡ Sua energia vai encher às {finish_brasilia.strftime('%H:%M')} (horário de Brasília)."
+                f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M')}"
             )
             return
 
-        # NÚMERO
+        # RECEBER NÚMERO
         try:
             current_energy = int(content)
         except:
@@ -83,8 +83,8 @@ async def on_message(message):
         finish_brasilia = finish_time.replace(tzinfo=ZoneInfo("UTC")).astimezone(BRASILIA)
 
         await message.channel.send(
-            f"⚡ Energia registrada: {current_energy}\n"
-            f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M')} (horário de Brasília)."
+            f"⚡ Energia registrada: {current_energy}\n\n"
+            f"🔋 Vai encher às {finish_brasilia.strftime('%H:%M')}"
         )
 
 @tasks.loop(minutes=1)

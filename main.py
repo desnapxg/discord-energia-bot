@@ -59,7 +59,7 @@ async def on_message(message):
             finish_brasilia = finish_time.replace(tzinfo=ZoneInfo("UTC")).astimezone(BRASILIA)
 
             await message.channel.send(
-                f"🔋 Sua energia ficará cheia às {finish_brasilia.strftime('%H:%M do dia %d/%m/%Y')}"
+                f"🔋 Sua energia ficará cheia às {finish_brasilia.strftime('%H:%M do dia %d/%m/%Y.')}"
             )
             return
 
@@ -84,7 +84,7 @@ async def on_message(message):
 
         await message.channel.send(
             f"⚡ Energia registrada: {current_energy}\n\n"
-            f"🔋 Sua energia ficará completa às {finish_brasilia.strftime('%H:%M do dia %d/%m/%Y')}"
+            f"🔋 Sua energia ficará completa às {finish_brasilia.strftime('%H:%M do dia %d/%m/%Y.')}"
         )
 
 @tasks.loop(minutes=1)

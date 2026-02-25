@@ -48,15 +48,15 @@ def get_user_config(data, user_id):
 def create_panel_embed(user_limit, user_tz_code):
     tz_display = next((name for name, tz in TIMEZONES.items() if tz == user_tz_code), user_tz_code)
     return discord.Embed(
-        title="🎒 Mystery Dungeon - Energia",
+        title="🎒 Mystery Dungeon - Energia Azul 🔹",
         description=(
             f"📍 Fuso Atual: **{tz_display}**\n"
-            f"🔋 Limite de energia: **{user_limit}**\n\n"
-            "⚡ **Atualizar Energia:** Registra quanto você tem agora.\n"
-            "🔍 **Ver Status:** Quanto tempo falta para carregar.\n"
-            "⚙️ **Configurações:** Altera limite ou fuso horário."
+            f"🔋 Limite de **energia azul**: **{user_limit}**\n\n"
+            "⚡ **Atualizar Energia:** Registra sua energia azul atual.\n"
+            "🔍 **Ver Status:** Quanto falta para a energia azul carregar.\n"
+            "⚙️ **Configurações:** Altera limite azul ou fuso horário."
         ),
-        color=discord.Color.gold()
+        color=discord.Color.blue() # Mudado para azul para combinar com o tema
     )
 
 # --- Modais ---
@@ -83,8 +83,8 @@ class CustomTimeZoneModal(discord.ui.Modal, title='📍 Configurar Fuso Horário
         else:
             await interaction.response.send_message("❌ Fuso não encontrado.", ephemeral=True)
 
-class LimitModal(discord.ui.Modal, title='📏 Limite de Energia'):
-    limit_input = discord.ui.TextInput(label='Novo limite máximo:', placeholder='Ex: 120', min_length=1, max_length=3)
+class LimitModal(discord.ui.Modal, title='📏 Limite de Energia Azul 🔹'):
+    limit_input = discord.ui.TextInput(label='Novo limite máximo (Azul):', placeholder='Ex: 120', min_length=1, max_length=3)
 
     async def on_submit(self, interaction: discord.Interaction):
         if not self.limit_input.value.isdigit():
@@ -96,14 +96,14 @@ class LimitModal(discord.ui.Modal, title='📏 Limite de Energia'):
         user_info["max"] = new_limit
         data[user_id] = user_info
         save_data(data)
-        await interaction.response.send_message(f"✅ Limite alterado para **{new_limit}**!", ephemeral=True)
+        await interaction.response.send_message(f"✅ Limite de **energia azul** alterado para **{new_limit}**!", ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(new_limit, user_info["tz"]), view=EnergyView())
 
 class EnergyModal(discord.ui.Modal):
     def __init__(self, limit, tz_code):
-        super().__init__(title="⚡ Atualizar Energia")
+        super().__init__(title="⚡ Atualizar Energia Azul 🔹")
         self.limit, self.tz_code = limit, tz_code
-        self.energy_input = discord.ui.TextInput(label=f'Energia atual (0 a {limit})', min_length=1, max_length=3)
+        self.energy_input = discord.ui.TextInput(label=f'Energia AZUL atual (0 a {limit})', min_length=1, max_length=3)
         self.add_item(self.energy_input)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -116,7 +116,7 @@ class EnergyModal(discord.ui.Modal):
         
         if current >= self.limit:
             data[user_id] = {"status": "FULL", "max": self.limit, "tz": self.tz_code}
-            msg = f"✅ Energia registrada como cheia (**{self.limit}/{self.limit}**)!"
+            msg = f"✅ Sua **energia azul** foi registrada como cheia (**{self.limit}/{self.limit}**)!"
         else:
             missing = self.limit - current
             finish_time = datetime.now(timezone.utc) + timedelta(minutes=missing * RECHARGE_MINUTES)
@@ -125,13 +125,12 @@ class EnergyModal(discord.ui.Modal):
             local_tz = zoneinfo.ZoneInfo(self.tz_code)
             finish_local = finish_time.astimezone(local_tz)
             
-            # Formatação da data e hora solicitada
             data_str = finish_local.strftime('%d/%m/%Y')
             hora_str = finish_local.strftime('%H:%M')
             
             msg = (
-                f"⚡ Energia atual: **{current}/{self.limit}**\n"
-                f"⏰ Energia cheia às: `{hora_str}` do dia `{data_str}`"
+                f"🔹 **Energia azul atual: {current}/{self.limit}**\n"
+                f"⏰ Energia azul cheia às: `{hora_str}` do dia `{data_str}`"
             )
             
         save_data(data)
@@ -143,7 +142,6 @@ class EnergyModal(discord.ui.Modal):
 class TimezoneOptionsView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
-        # O select vem primeiro na lista de itens
         select = discord.ui.Select(
             placeholder="Escolha um fuso comum...", 
             options=[discord.SelectOption(label=name, value=tz) for name, tz in TIMEZONES.items()],
@@ -162,7 +160,6 @@ class TimezoneOptionsView(discord.ui.View):
         await interaction.response.send_message(f"✅ Fuso alterado!", ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(user_info["max"], user_info["tz"]), view=EnergyView())
 
-    # Botão manual definido explicitamente na row 1 para ficar embaixo
     @discord.ui.button(label="Digitar Manualmente (Outros)", style=discord.ButtonStyle.primary, emoji="⌨️", row=1)
     async def custom_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CustomTimeZoneModal())
@@ -171,7 +168,7 @@ class MainConfigView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
 
-    @discord.ui.button(label="Alterar Limite", style=discord.ButtonStyle.secondary, emoji="📏")
+    @discord.ui.button(label="Alterar Limite Azul", style=discord.ButtonStyle.secondary, emoji="📏")
     async def go_limit(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LimitModal())
 
@@ -185,31 +182,30 @@ class EnergyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Ver Status", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
+    @discord.ui.button(label="Ver Status Azul", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data()
         config = get_user_config(data, interaction.user.id)
         user_data = data.get(str(interaction.user.id))
         limit = config["max"]
         
-        # Mensagem para primeiro uso ou energia em 0 sem recarga ativa
         if not user_data or (isinstance(user_data, dict) and "finish" not in user_data and user_data.get("status") != "FULL"):
-            await interaction.response.send_message("Ainda não estamos analisando sua energia. Atualize para começarmos!", ephemeral=True)
+            await interaction.response.send_message("Ainda não estamos analisando sua **energia azul**. Atualize para começarmos!", ephemeral=True)
         elif isinstance(user_data, dict) and user_data.get("status") == "FULL":
-            await interaction.response.send_message(f"🔋 Sua energia está cheia (**{limit}/{limit}**)!", ephemeral=True)
+            await interaction.response.send_message(f"🔋 Sua **energia azul** está cheia (**{limit}/{limit}**)!", ephemeral=True)
         else:
             finish_time = datetime.fromisoformat(user_data["finish"])
             now = datetime.now(timezone.utc)
             if now >= finish_time:
-                await interaction.response.send_message(f"✨ Energia completada (**{limit}/{limit}**)!", ephemeral=True)
+                await interaction.response.send_message(f"✨ Energia azul completada (**{limit}/{limit}**)!", ephemeral=True)
             else:
                 minutes_left = (finish_time - now).total_seconds() / 60
                 current = max(0, math.floor(limit - (minutes_left / RECHARGE_MINUTES)))
-                await interaction.response.send_message(f"⚡ Energia atual: **{current}/{limit}**", ephemeral=True)
+                await interaction.response.send_message(f"🔹 **Energia azul atual: {current}/{limit}**", ephemeral=True)
         
         await interaction.channel.send(embed=create_panel_embed(limit, config["tz"]), view=EnergyView())
 
-    @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
+    @discord.ui.button(label="Atualizar Energia Azul", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
     async def update_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data()
         config = get_user_config(data, interaction.user.id)
@@ -217,7 +213,7 @@ class EnergyView(discord.ui.View):
 
     @discord.ui.button(label="Configurações", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="p:config")
     async def config_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⚙️ O que deseja configurar?", view=MainConfigView(), ephemeral=True)
+        await interaction.response.send_message("⚙️ Configurações da **Energia Azul**:", view=MainConfigView(), ephemeral=True)
 
 # --- Bot ---
 class MyBot(discord.Client):
@@ -247,7 +243,7 @@ async def on_message(message):
         test_finish = datetime.now(timezone.utc) + timedelta(seconds=10)
         data[str(message.author.id)] = {"finish": test_finish.isoformat(), "max": config["max"], "tz": config["tz"]}
         save_data(data)
-        await message.channel.send("🧪 **Teste iniciado.** Aguarde 10 segundos.")
+        await message.channel.send("🧪 **Teste iniciado.** Aguarde 10 segundos para o aviso da energia azul.")
         return
 
     await message.channel.send(embed=create_panel_embed(config["max"], config["tz"]), view=EnergyView())
@@ -263,7 +259,7 @@ async def check_energy():
                 try:
                     user = await client.fetch_user(int(uid))
                     limit, tz = udata.get("max", DEFAULT_MAX), udata.get("tz", "America/Sao_Paulo")
-                    await user.send(f"🔥 **Sua energia chegou em {limit}!**")
+                    await user.send(f"🔥 **Sua energia azul chegou em {limit}!**")
                     await user.send(embed=create_panel_embed(limit, tz), view=EnergyView())
                     data[uid] = {"status": "FULL", "max": limit, "tz": tz}
                     changed = True

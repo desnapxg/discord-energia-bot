@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 # --- Configurações ---
 TOKEN = os.getenv("TOKEN")
-MAX_ENERGY = 100
+DEFAULT_MAX = 100 
 RECHARGE_MINUTES = 30
 DATA_FILE = "data.json"
 BRASILIA = ZoneInfo("America/Sao_Paulo")
@@ -25,108 +25,126 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-def create_panel_embed():
-    return discord.Embed(
-        title="🎮 Mystery Dungeon - Energia",
+def create_panel_embed(user_limit):
+    embed = discord.Embed(
+        title="🎒 Mystery Dungeon - Energia",
         description=(
-            "Gerencie sua recarga de energia abaixo.\n\n"
-            "⚡ **Atualizar Energia:** Registra quanto você tem agora.\n"
-            "📊 **Ver Status:** Verifica quanto tempo falta para encher."
+            f"Seu limite atual é: **{user_limit}**\n\n"
+            "⚡ **Atualizar Energia:** Registra sua energia atual.\n"
+            "🔍 **Ver Status:** Verifica o progresso da recarga.\n"
+            "⚙️ **Alterar Limite:** Muda o seu limite máximo (Upgrades)."
         ),
-        color=discord.Color.green()
+        color=discord.Color.gold()
     )
+    return embed
 
-# --- Modal para Digitar a Energia ---
-class EnergyModal(discord.ui.Modal, title='Atualizar Energia'):
-    energy_input = discord.ui.TextInput(
-        label='Qual sua energia atual no jogo?',
-        placeholder='Digite de 0 a 100...',
+# --- Modal: Alterar Limite Máximo ---
+class LimitModal(discord.ui.Modal, title='⚙️ Alterar Limite de Energia'):
+    limit_input = discord.ui.TextInput(
+        label='Qual o seu limite máximo agora?',
+        placeholder='Ex: 120, 150...',
         min_length=1,
         max_length=3,
     )
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            current_energy = int(self.energy_input.value)
+            new_limit = int(self.limit_input.value)
+            user_id = str(interaction.user.id)
+            data = load_data()
+            
+            user_data = data.get(user_id, {})
+            if isinstance(user_data, str): user_data = {}
+            
+            user_data["max"] = new_limit
+            data[user_id] = user_data
+            save_data(data)
+
+            await interaction.response.send_message(f"✅ Seu limite foi atualizado para **{new_limit}**!", ephemeral=True)
+            await interaction.channel.send(embed=create_panel_embed(new_limit), view=EnergyView())
+        except ValueError:
+            await interaction.response.send_message("❌ Use apenas números.", ephemeral=True)
+
+# --- Modal: Atualizar Energia Atual ---
+class EnergyModal(discord.ui.Modal):
+    def __init__(self, user_limit):
+        super().__init__(title="⚡ Atualizar Energia")
+        self.user_limit = user_limit
+        self.energy_input = discord.ui.TextInput(
+            label=f'Energia atual (0 a {user_limit})',
+            placeholder=f'Digite quanto você tem agora...',
+            min_length=1,
+            max_length=3,
+        )
+        self.add_item(self.energy_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            current = int(self.energy_input.value)
             user_id = str(interaction.user.id)
             data = load_data()
 
-            if current_energy >= MAX_ENERGY:
-                data[user_id] = "FULL"
-                save_data(data)
-                await interaction.response.send_message(
-                    "✅ **Energia total registrada!** Como você já está com 100%, ficarei aguardando você gastá-las.", 
-                    ephemeral=True
-                )
+            if current >= self.user_limit:
+                data[user_id] = {"status": "FULL", "max": self.user_limit}
+                await interaction.response.send_message(f"✅ Energia cheia ({current}/{self.user_limit})!", ephemeral=True)
             else:
-                missing = MAX_ENERGY - current_energy
+                missing = self.user_limit - current
                 minutes_needed = missing * RECHARGE_MINUTES
                 finish_time = datetime.now(timezone.utc) + timedelta(minutes=minutes_needed)
-
-                data[user_id] = finish_time.isoformat()
-                save_data(data)
-
+                data[user_id] = {"finish": finish_time.isoformat(), "max": self.user_limit}
+                
                 finish_br = finish_time.astimezone(BRASILIA)
                 await interaction.response.send_message(
-                    f"⚡ **Energia registrada: {current_energy}**\n"
-                    f"🔋 Sua energia deve completar às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`", 
+                    f"⚡ Registrado: **{current}/{self.user_limit}**\n⏰ Cheia às: `{finish_br.strftime('%H:%M')}`", 
                     ephemeral=True
                 )
             
-            await interaction.channel.send(embed=create_panel_embed(), view=EnergyView())
+            save_data(data)
+            await interaction.channel.send(embed=create_panel_embed(self.user_limit), view=EnergyView())
         except ValueError:
-            await interaction.response.send_message("❌ Erro: Por favor, use apenas números.", ephemeral=True)
+            await interaction.response.send_message("❌ Use apenas números.", ephemeral=True)
 
-# --- View com Botões Persistentes ---
+# --- View com 3 Botões ---
 class EnergyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Ver Status", style=discord.ButtonStyle.primary, emoji="📊", custom_id="btn_status")
+    @discord.ui.button(label="Ver Status", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="btn_status")
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data()
-        user_id = str(interaction.user.id)
-
-        if user_id not in data:
-            await interaction.response.send_message(
-                "👋 **Eu ainda não estou acompanhando sua recarga.**\n"
-                "Clique em **Atualizar Energia** ⚡ para começar!", 
-                ephemeral=True
-            )
-        elif data[user_id] == "FULL":
-            await interaction.response.send_message(
-                "🔋 **Sua energia está cheia (100/100)!**\n\n"
-                "Caso tenha gasto, clique em **Atualizar Energia** ⚡ para recomeçar.", 
-                ephemeral=True
-            )
-        else:
-            finish_time = datetime.fromisoformat(data[user_id])
-            now = datetime.now(timezone.utc)
-
-            if now >= finish_time:
-                await interaction.response.send_message(
-                    "🔥 **Sua energia já completou a recarga!**", 
-                    ephemeral=True
-                )
-            else:
-                time_left = finish_time - now
-                minutes_left = time_left.total_seconds() / 60
-                current_energy = math.floor(MAX_ENERGY - (minutes_left / RECHARGE_MINUTES))
-                finish_br = finish_time.astimezone(BRASILIA)
-
-                await interaction.response.send_message(
-                    f"⚡ Energia atual aproximada: **{current_energy}**.\n"
-                    f"⌛ Completa às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`",
-                    ephemeral=True
-                )
+        user_data = data.get(str(interaction.user.id), {"max": DEFAULT_MAX})
+        if isinstance(user_data, str): user_data = {"status": "FULL", "max": DEFAULT_MAX}
         
-        await interaction.channel.send(embed=create_panel_embed(), view=EnergyView())
+        limit = user_data.get("max", DEFAULT_MAX)
+
+        if "finish" not in user_data and user_data.get("status") != "FULL":
+            await interaction.response.send_message(f"👋 Sem recarga ativa. Seu limite é **{limit}**.", ephemeral=True)
+        elif user_data.get("status") == "FULL":
+            await interaction.response.send_message(f"🔋 Energia cheia: **{limit}/{limit}**.", ephemeral=True)
+        else:
+            finish_time = datetime.fromisoformat(user_data["finish"])
+            now = datetime.now(timezone.utc)
+            if now >= finish_time:
+                await interaction.response.send_message(f"✨ Energia completada: **{limit}/{limit}**!", ephemeral=True)
+            else:
+                minutes_left = (finish_time - now).total_seconds() / 60
+                current = math.floor(limit - (minutes_left / RECHARGE_MINUTES))
+                await interaction.response.send_message(f"⚡ Status: **{current}/{limit}**", ephemeral=True)
+        
+        await interaction.channel.send(embed=create_panel_embed(limit), view=EnergyView())
 
     @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="btn_update")
     async def update_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(EnergyModal())
+        data = load_data()
+        user_data = data.get(str(interaction.user.id), {"max": DEFAULT_MAX})
+        limit = user_data.get("max", DEFAULT_MAX) if isinstance(user_data, dict) else DEFAULT_MAX
+        await interaction.response.send_modal(EnergyModal(limit))
 
-# --- Classe do Bot ---
+    @discord.ui.button(label="Alterar Limite", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="btn_limit")
+    async def limit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(LimitModal())
+
+# --- Bot e Tasks ---
 class MyBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
@@ -135,66 +153,33 @@ class MyBot(discord.Client):
 
     async def setup_hook(self):
         self.add_view(EnergyView())
-        if not check_energy.is_running():
-            check_energy.start()
-
-    async def on_ready(self):
-        print(f"✅ Bot online: {self.user}")
+        check_energy.start()
 
 client = MyBot()
 
 @client.event
 async def on_message(message):
-    if message.author.bot:
-        return
+    if message.author.bot or not isinstance(message.channel, discord.DMChannel): return
+    data = load_data()
+    user_limit = data.get(str(message.author.id), {"max": DEFAULT_MAX}).get("max", DEFAULT_MAX) if isinstance(data.get(str(message.author.id)), dict) else DEFAULT_MAX
+    await message.channel.send(embed=create_panel_embed(user_limit), view=EnergyView())
 
-    # Garante que responde apenas em DM para não poluir servidores
-    if isinstance(message.channel, discord.DMChannel):
-        content = message.content.lower().strip()
-
-        if content == "!painel":
-            await message.channel.send(embed=create_panel_embed(), view=EnergyView())
-            return
-
-        if content == "!testar":
-            user_id = str(message.author.id)
-            data = load_data()
-            test_finish = datetime.now(timezone.utc) + timedelta(seconds=5)
-            data[user_id] = test_finish.isoformat()
-            save_data(data)
-            await message.channel.send("🧪 **Teste iniciado!** Aguarde 5 segundos.")
-            return
-
-        # Se não for comando, manda o painel de boas-vindas/ajuda
-        embed = discord.Embed(
-            title="👋 Olá! Precisa de ajuda com a energia?",
-            description="Use o painel abaixo para gerenciar sua recarga de Mystery Dungeon:",
-            color=discord.Color.blue()
-        )
-        await message.channel.send(embed=embed, view=EnergyView())
-
-@tasks.loop(seconds=5)
+@tasks.loop(seconds=10)
 async def check_energy():
     data = load_data()
     now = datetime.now(timezone.utc)
     changed = False
-
-    for user_id in list(data.keys()):
-        if data[user_id] == "FULL":
-            continue
-
-        finish_time = datetime.fromisoformat(data[user_id])
-        if now >= finish_time:
-            try:
-                user = await client.fetch_user(int(user_id))
-                await user.send("🔥 **Sua energia chegou em 100!** Hora de fazer alguma Mystery Dungeon! 🎮")
-                await user.send(embed=create_panel_embed(), view=EnergyView())
-                data[user_id] = "FULL"
-                changed = True
-            except:
-                pass
-
-    if changed:
-        save_data(data)
+    for user_id, user_data in list(data.items()):
+        if isinstance(user_data, dict) and "finish" in user_data:
+            if now >= datetime.fromisoformat(user_data["finish"]):
+                try:
+                    user = await client.fetch_user(int(user_id))
+                    limit = user_data.get("max", DEFAULT_MAX)
+                    await user.send(f"⚡ **Sua energia chegou em {limit}!** Hora de Mystery Dungeon! 🎮")
+                    await user.send(embed=create_panel_embed(limit), view=EnergyView())
+                    data[user_id] = {"status": "FULL", "max": limit}
+                    changed = True
+                except: pass
+    if changed: save_data(data)
 
 client.run(TOKEN)

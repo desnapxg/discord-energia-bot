@@ -49,20 +49,19 @@ def get_user_config(data, user_id):
 
 def create_panel_embed(user_limit, user_tz_code):
     tz_display = next((name for name, tz in TIMEZONES.items() if tz == user_tz_code), user_tz_code)
-    embed = discord.Embed(
+    return discord.Embed(
         title="🎒 Mystery Dungeon - Energia Azul 🔹",
         description=(
             f"📍 Fuso Atual: **{tz_display}**\n"
             f"🔋 Limite de **energia azul**: **{user_limit}**\n\n"
             "⚡ **Atualizar Energia:** Registra sua energia azul atual.\n"
-            "🔍 **Ver Status:** Confira o status atual da sua energia.\n"
+            "🔍 **Ver Status:** Confira o status da sua energia azul.\n"
             "⚙️ **Configurações:** Altera limite azul ou fuso horário."
         ),
         color=discord.Color.blue()
     )
-    return embed
 
-# --- Modais (Formulários) ---
+# --- Modais ---
 
 class CustomTimeZoneModal(discord.ui.Modal, title='📍 Configurar Fuso Horário'):
     tz_input = discord.ui.TextInput(label='Cidade ou Fuso (Continent/City)', placeholder='Ex: Tokyo, Paris, New_York...', min_length=3, max_length=50)
@@ -85,7 +84,7 @@ class CustomTimeZoneModal(discord.ui.Modal, title='📍 Configurar Fuso Horário
             await interaction.response.send_message(f"✅ Fuso de **energia azul** definido: **{found_tz}**", ephemeral=True)
             await interaction.channel.send(embed=create_panel_embed(user_info["max"], found_tz), view=EnergyView())
         else:
-            await interaction.response.send_message("❌ Fuso não encontrado. Tente `Continente/Cidade`.", ephemeral=True)
+            await interaction.response.send_message("❌ Fuso não encontrado.", ephemeral=True)
 
 class LimitModal(discord.ui.Modal, title='📏 Limite de Energia Azul 🔹'):
     limit_input = discord.ui.TextInput(label='Novo limite máximo (Azul):', placeholder='Ex: 120', min_length=1, max_length=3)
@@ -180,7 +179,7 @@ class EnergyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Status atual da sua energia", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
+    @discord.ui.button(label="Status da Energia", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data()
         config = get_user_config(data, interaction.user.id)
@@ -265,7 +264,7 @@ async def check_energy():
                     data[uid] = {"status": "FULL", "max": limit, "tz": tz}
                     changed = True
                 except Exception:
-                    pass # Usuário pode ter bloqueado DMs
+                    pass 
     if changed: save_data(data)
 
 if __name__ == "__main__":

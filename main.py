@@ -21,7 +21,7 @@ TIMEZONES = {
     "Açores (UTC-1)": "Atlantic/Azores"
 }
 
-# --- Persistência de Dados ---
+# --- Persistência ---
 def load_data():
     if not os.path.exists(DATA_FILE): return {}
     try:
@@ -34,8 +34,7 @@ def save_data(data):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"Erro ao salvar: {e}")
+    except Exception as e: print(f"Erro ao salvar: {e}")
 
 def get_user_config(data, user_id):
     user_info = data.get(str(user_id))
@@ -126,11 +125,16 @@ class EnergyModal(discord.ui.Modal):
         await interaction.response.send_message(msg, ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(self.limit, self.tz_code), view=EnergyView())
 
-# --- Views ---
-class ConfigView(discord.ui.View):
+# --- Views Secundárias (Configurações) ---
+
+class TimezoneOptionsView(discord.ui.View):
+    """View que aparece apenas quando clica em Alterar Fuso"""
     def __init__(self):
         super().__init__(timeout=180)
-        select = discord.ui.Select(placeholder="Escolha um fuso rápido...", options=[discord.SelectOption(label=name, value=tz) for name, tz in TIMEZONES.items()])
+        select = discord.ui.Select(
+            placeholder="Escolha um fuso comum...", 
+            options=[discord.SelectOption(label=name, value=tz) for name, tz in TIMEZONES.items()]
+        )
         select.callback = self.tz_callback
         self.add_item(select)
 
@@ -144,13 +148,24 @@ class ConfigView(discord.ui.View):
         await interaction.response.send_message(f"✅ Fuso alterado!", ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(user_info["max"], user_info["tz"]), view=EnergyView())
 
-    @discord.ui.button(label="Alterar Limite", style=discord.ButtonStyle.secondary, emoji="📏", row=1)
-    async def change_limit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(LimitModal())
-
-    @discord.ui.button(label="Manual (Outros)", style=discord.ButtonStyle.primary, emoji="⌨️", row=1)
+    @discord.ui.button(label="Digitar Manualmente (Outros)", style=discord.ButtonStyle.primary, emoji="⌨️")
     async def custom_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CustomTimeZoneModal())
+
+class MainConfigView(discord.ui.View):
+    """Menu Inicial de Configurações (Aparece ao clicar na engrenagem)"""
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @discord.ui.button(label="Alterar Limite", style=discord.ButtonStyle.secondary, emoji="📏")
+    async def go_limit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(LimitModal())
+
+    @discord.ui.button(label="Alterar Fuso Horário", style=discord.ButtonStyle.secondary, emoji="🌐")
+    async def go_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("🌐 Escolha seu fuso horário:", view=TimezoneOptionsView(), ephemeral=True)
+
+# --- View Principal ---
 
 class EnergyView(discord.ui.View):
     def __init__(self):
@@ -185,7 +200,8 @@ class EnergyView(discord.ui.View):
 
     @discord.ui.button(label="Configurações", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="p:config")
     async def config_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⚙️ **Configurações**", view=ConfigView(), ephemeral=True)
+        # Agora ele chama a MainConfigView que tem os dois botões separados
+        await interaction.response.send_message("⚙️ O que deseja configurar?", view=MainConfigView(), ephemeral=True)
 
 # --- Bot ---
 class MyBot(discord.Client):
@@ -197,6 +213,9 @@ class MyBot(discord.Client):
     async def setup_hook(self):
         self.add_view(EnergyView())
         check_energy.start()
+
+    async def on_ready(self):
+        print(f"✅ Bot online: {self.user}")
 
 client = MyBot()
 
@@ -212,7 +231,7 @@ async def on_message(message):
         data[str(message.author.id)] = {"finish": test_finish.isoformat(), "max": config["max"], "tz": config["tz"]}
         save_data(data)
         await message.channel.send("🧪 **Teste iniciado.** Aguarde 10 segundos.")
-        return # Trava vital para evitar duplicação
+        return
 
     await message.channel.send(embed=create_panel_embed(config["max"], config["tz"]), view=EnergyView())
 

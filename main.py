@@ -179,7 +179,7 @@ class EnergyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Status da Energia", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
+    @discord.ui.button(label="Status da Energia Azul", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data()
         config = get_user_config(data, interaction.user.id)

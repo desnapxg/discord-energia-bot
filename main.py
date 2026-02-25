@@ -3,6 +3,7 @@ from discord.ext import tasks
 import os
 import json
 import math
+import asyncio
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -51,12 +52,10 @@ class EnergyModal(discord.ui.Modal, title='Atualizar Energia'):
             data = load_data()
 
             if current_energy >= MAX_ENERGY:
-                if user_id in data:
-                    del data[user_id]
-                    save_data(data)
-                
+                data[user_id] = "FULL"
+                save_data(data)
                 await interaction.response.send_message(
-                    "✅ **Energia total registrada!** Como você já está com 100%, não farei contagem agora.", 
+                    "✅ **Energia total registrada!** Como você já está com 100%, ficarei aguardando você gastá-las.", 
                     ephemeral=True
                 )
             else:
@@ -75,7 +74,6 @@ class EnergyModal(discord.ui.Modal, title='Atualizar Energia'):
                 )
             
             await interaction.channel.send(embed=create_panel_embed(), view=EnergyView())
-
         except ValueError:
             await interaction.response.send_message("❌ Erro: Por favor, use apenas números.", ephemeral=True)
 
@@ -92,7 +90,13 @@ class EnergyView(discord.ui.View):
         if user_id not in data:
             await interaction.response.send_message(
                 "👋 **Eu ainda não estou acompanhando sua recarga.**\n"
-                "Para começar, clique em **Atualizar Energia** ⚡ e me diga quanto você tem no jogo agora!", 
+                "Clique em **Atualizar Energia** ⚡ para começar!", 
+                ephemeral=True
+            )
+        elif data[user_id] == "FULL":
+            await interaction.response.send_message(
+                "🔋 **Sua energia está cheia (100/100)!**\n\n"
+                "Caso tenha gasto, clique em **Atualizar Energia** ⚡ para recomeçar.", 
                 ephemeral=True
             )
         else:
@@ -101,8 +105,7 @@ class EnergyView(discord.ui.View):
 
             if now >= finish_time:
                 await interaction.response.send_message(
-                    "🔋 **Energia 100/100!**\n"
-                    "Sua barra de energia já deve estar cheia no jogo!", 
+                    "🔥 **Sua energia já completou a recarga!**", 
                     ephemeral=True
                 )
             else:
@@ -112,8 +115,8 @@ class EnergyView(discord.ui.View):
                 finish_br = finish_time.astimezone(BRASILIA)
 
                 await interaction.response.send_message(
-                    f"⚡ Sua energia atual deve estar em aproximadamente **{current_energy}**.\n"
-                    f"⌛ A recarga completa será às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`",
+                    f"⚡ Energia atual aproximada: **{current_energy}**.\n"
+                    f"⌛ Completa às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`",
                     ephemeral=True
                 )
         
@@ -145,23 +148,40 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.content.lower() == "!painel":
+    content = message.content.lower()
+
+    if content == "!painel":
         await message.channel.send(embed=create_panel_embed(), view=EnergyView())
 
-@tasks.loop(minutes=1)
+    # --- COMANDO DE TESTE ---
+    if content == "!testar":
+        user_id = str(message.author.id)
+        data = load_data()
+        
+        # Define que a energia acaba em 5 segundos a partir de agora
+        test_finish = datetime.now(timezone.utc) + timedelta(seconds=5)
+        data[user_id] = test_finish.isoformat()
+        save_data(data)
+        
+        await message.channel.send("🧪 **Teste iniciado!** Em alguns segundos você deve receber o aviso de energia cheia na sua DM.")
+
+@tasks.loop(seconds=5) # Reduzi para 5 segundos para o teste ser mais rápido
 async def check_energy():
     data = load_data()
     now = datetime.now(timezone.utc)
     changed = False
 
     for user_id in list(data.keys()):
+        if data[user_id] == "FULL":
+            continue
+
         finish_time = datetime.fromisoformat(data[user_id])
         if now >= finish_time:
             try:
                 user = await client.fetch_user(int(user_id))
                 await user.send("🔥 **Energia cheia!** Sua recarga de Mystery Dungeon terminou!")
                 await user.send(embed=create_panel_embed(), view=EnergyView())
-                del data[user_id]
+                data[user_id] = "FULL"
                 changed = True
             except:
                 pass

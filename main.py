@@ -120,6 +120,7 @@ class EnergyModal(discord.ui.Modal):
             finish_local = finish_time.astimezone(local_tz)
             msg = (
                 f"🔹 **Energia azul atualizada: {curr}/{self.limit}**\n"
+                f"⏳ Falta: `{m}m {s}s` para o próximo ponto.\n"
                 f"⏰ Ficará cheia às: `{finish_local.strftime('%H:%M:%S')}` em `{finish_local.strftime('%d/%m')}`"
             )
             
@@ -136,7 +137,10 @@ class EnergyView(discord.ui.View):
         data = load_data(); user_id = str(interaction.user.id); u_data = data.get(user_id)
         if not u_data or u_data.get("status") is None:
             return await interaction.response.send_message("Sua energia azul ainda não está sendo monitorada.", ephemeral=True)
+        
         limit = u_data.get("max", DEFAULT_MAX)
+        tz_code = u_data.get("tz", "America/Sao_Paulo")
+        
         if u_data.get("status") == "FULL":
             return await interaction.response.send_message(f"🔋 Energia cheia! ({limit}/{limit})", ephemeral=True)
         
@@ -147,12 +151,29 @@ class EnergyView(discord.ui.View):
         now = datetime.now(timezone.utc)
         if now >= finish_time: return await interaction.response.send_message(f"✨ Energia cheia! ({limit}/{limit})", ephemeral=True)
         
+        # Cálculos de tempo restante
         diff = finish_time - now
         total_secs = diff.total_seconds()
+        
+        # Pontos atuais
         pontos_faltantes = math.ceil(total_secs / (RECHARGE_MINUTES * 60))
         current = max(0, limit - pontos_faltantes)
-        h, m, s = int(total_secs // 3600), int((total_secs % 3600) // 60), int(total_secs % 60)
-        await interaction.response.send_message(f"🔹 **Energia atual: {current}/{limit}**\n⏳ Falta: `{h}h {m}m {s}s` para completar.", ephemeral=True)
+        
+        # Formatação do Cronômetro (Falta Xh Ym Zs)
+        h, rem = divmod(int(total_secs), 3600)
+        m, s = divmod(rem, 60)
+        
+        # Formatação do Horário Final (Relógio local)
+        local_tz = zoneinfo.ZoneInfo(tz_code)
+        finish_local = finish_time.astimezone(local_tz)
+        
+        # Resposta com os 3 campos solicitados
+        await interaction.response.send_message(
+            f"🔹 **Energia atual: {current}/{limit}**\n"
+            f"⏳ Falta: `{h}h {m}m {s}s` para completar.\n"
+            f"⏰ Ficará cheia às: `{finish_local.strftime('%H:%M:%S')}` em `{finish_local.strftime('%d/%m')}`",
+            ephemeral=True
+        )
 
     @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
     async def update_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -216,9 +237,8 @@ async def on_message(message):
     if message.author.bot or not isinstance(message.channel, discord.DMChannel): return
     data = load_data(); user_id = str(message.author.id); config = get_user_config(data, user_id)
     
-    # --- COMANDO DE TESTE CORRIGIDO PARA NÃO SOBRESCREVER DADOS ---
     if message.content.lower() == "!testar":
-        await message.channel.send("🧪 **Simulação de teste:** Você receberá o aviso de energia cheia em 10 segundos sem alterar seus dados reais.")
+        await message.channel.send("🧪 **Simulação de teste:** Você receberá o aviso em 10 segundos (sem alterar seus dados reais).")
         async def mock_notification():
             import asyncio
             await asyncio.sleep(10)

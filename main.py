@@ -12,7 +12,7 @@ DEFAULT_MAX = 100
 RECHARGE_MINUTES = 30
 DATA_FILE = "data.json"
 
-# Lista de Fusos Horários Populares para o Menu Rápido
+# Lista de Fusos Horários Populares
 TIMEZONES = {
     "Brasília (UTC-3)": "America/Sao_Paulo",
     "Manaus (UTC-4)": "America/Manaus",
@@ -44,14 +44,14 @@ def get_user_config(data, user_id):
     }
 
 def create_panel_embed(user_limit, user_tz_code):
-    # Tenta pegar o nome bonito do fuso, se não for um dos padrões, usa o ID
-    tz_name = next((name for name, tz in TIMEZONES.items() if tz == user_tz_code), user_tz_code)
+    # Procura o nome amigável ou usa o próprio código do fuso
+    tz_display = next((name for name, tz in TIMEZONES.items() if tz == user_tz_code), user_tz_code)
     
     return discord.Embed(
-        title="🎒 Mystery Dungeon - Pokédex de Energia",
+        title="🎒 Mystery Dungeon - Energia",
         description=(
-            f"📍 Fuso Atual: **{tz_name}**\n"
-            f"🔋 Limite Máximo: **{user_limit}**\n\n"
+            f"📍 Fuso Atual: **{tz_display}**\n"
+            f"🔋 Limite de energia: **{user_limit}**\n\n"
             "⚡ **Atualizar Energia:** Registra sua energia atual.\n"
             "🔍 **Ver Status:** Verifica o progresso da recarga.\n"
             "⚙️ **Configurações:** Altera limite ou fuso horário."
@@ -61,32 +61,52 @@ def create_panel_embed(user_limit, user_tz_code):
 
 # --- Modais ---
 
-class CustomTimeZoneModal(discord.ui.Modal, title='📍 Digitar Fuso Manualmente'):
+class CustomTimeZoneModal(discord.ui.Modal, title='📍 Configurar Fuso Horário'):
     tz_input = discord.ui.TextInput(
-        label='Nome do Fuso (Ex: Continente/Cidade)',
-        placeholder='Ex: America/Cuiaba, Europe/Paris, Asia/Tokyo...',
+        label='Sua Cidade ou Fuso (Ex: Continent/City)',
+        placeholder='Tente: Asia/Tokyo, Europe/Paris, America/Cuiaba...',
         min_length=3, max_length=50
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        tz_name = self.tz_input.value.strip()
+        input_value = self.tz_input.value.strip()
+        
+        # Tenta formatar a entrada caso o utilizador esqueça o continente
+        # Ex: "Tokyo" -> "Asia/Tokyo" (ajuda básica)
+        search_value = input_value.replace(" ", "_").title()
+        
+        found_tz = None
         try:
-            zoneinfo.ZoneInfo(tz_name) # Valida se o fuso existe
+            # Tenta validar o que foi digitado
+            zoneinfo.ZoneInfo(input_value)
+            found_tz = input_value
+        except:
+            # Se falhou, tenta procurar na lista completa do sistema
+            for tz in zoneinfo.available_timezones():
+                if search_value in tz:
+                    found_tz = tz
+                    break
+        
+        if found_tz:
             data = load_data()
             user_id = str(interaction.user.id)
             user_info = data.get(user_id, {})
             if not isinstance(user_info, dict): user_info = {}
             
-            user_info["tz"] = tz_name
+            user_info["tz"] = found_tz
             data[user_id] = user_info
             save_data(data)
 
-            await interaction.response.send_message(f"✅ Fuso horário definido para: **{tz_name}**", ephemeral=True)
-            await interaction.channel.send(embed=create_panel_embed(user_info.get("max", DEFAULT_MAX), tz_name), view=EnergyView())
-        except zoneinfo.ZoneInfoNotFoundError:
-            await interaction.response.send_message("❌ Nome de fuso inválido! Use o formato `Continente/Cidade`.", ephemeral=True)
+            await interaction.response.send_message(f"✅ Fuso horário reconhecido e definido como: **{found_tz}**", ephemeral=True)
+            await interaction.channel.send(embed=create_panel_embed(user_info.get("max", DEFAULT_MAX), found_tz), view=EnergyView())
+        else:
+            await interaction.response.send_message(
+                "❌ Não consegui encontrar esse fuso.\n"
+                "**Dica:** Tente o formato `Continente/Cidade` (ex: `Asia/Tokyo` ou `Europe/Madrid`).", 
+                ephemeral=True
+            )
 
-class LimitModal(discord.ui.Modal, title='📏 Alterar Limite de Energia'):
+class LimitModal(discord.ui.Modal, title='📏 Limite de Energia'):
     limit_input = discord.ui.TextInput(label='Qual seu novo limite?', placeholder='Ex: 120', min_length=1, max_length=3)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -103,10 +123,10 @@ class LimitModal(discord.ui.Modal, title='📏 Alterar Limite de Energia'):
             save_data(data)
 
             config = get_user_config(data, user_id)
-            await interaction.response.send_message(f"✅ Limite atualizado para **{new_limit}**!", ephemeral=True)
+            await interaction.response.send_message(f"✅ Limite de energia atualizado para **{new_limit}**!", ephemeral=True)
             await interaction.channel.send(embed=create_panel_embed(new_limit, config["tz"]), view=EnergyView())
         except:
-            await interaction.response.send_message("❌ Use apenas números maiores que 0.", ephemeral=True)
+            await interaction.response.send_message("❌ Por favor, use apenas números inteiros maiores que 0.", ephemeral=True)
 
 class EnergyModal(discord.ui.Modal):
     def __init__(self, limit, tz_code):
@@ -137,7 +157,7 @@ class EnergyModal(discord.ui.Modal):
             await interaction.response.send_message(msg, ephemeral=True)
             await interaction.channel.send(embed=create_panel_embed(self.limit, self.tz_code), view=EnergyView())
         except:
-            await interaction.response.send_message("❌ Erro ao processar números.", ephemeral=True)
+            await interaction.response.send_message("❌ Erro ao processar o número digitado.", ephemeral=True)
 
 # --- Views ---
 
@@ -145,9 +165,8 @@ class ConfigView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
         
-        # Select Menu de Fusos
         select = discord.ui.Select(
-            placeholder="Escolha um fuso rápido...",
+            placeholder="Escolha um fuso comum...",
             options=[discord.SelectOption(label=name, value=tz) for name, tz in TIMEZONES.items()]
         )
         select.callback = self.tz_callback
@@ -163,14 +182,14 @@ class ConfigView(discord.ui.View):
         data[user_id] = user_info
         save_data(data)
         
-        await interaction.response.send_message(f"✅ Fuso alterado!", ephemeral=True)
+        await interaction.response.send_message(f"✅ Fuso alterado com sucesso!", ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(user_info.get("max", DEFAULT_MAX), user_info["tz"]), view=EnergyView())
 
-    @discord.ui.button(label="Alterar Limite Máximo", style=discord.ButtonStyle.secondary, emoji="📏", row=1)
+    @discord.ui.button(label="Alterar Limite de Energia", style=discord.ButtonStyle.secondary, emoji="📏", row=1)
     async def change_limit(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LimitModal())
 
-    @discord.ui.button(label="Digitar Fuso Manual", style=discord.ButtonStyle.primary, emoji="⌨️", row=1)
+    @discord.ui.button(label="Digitar Manualmente (Outros)", style=discord.ButtonStyle.primary, emoji="⌨️", row=1)
     async def custom_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CustomTimeZoneModal())
 
@@ -209,7 +228,7 @@ class EnergyView(discord.ui.View):
 
     @discord.ui.button(label="Configurações", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="btn_config")
     async def config_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⚙️ **Painel de Configurações**\nEscolha o fuso ou altere seu limite máximo:", view=ConfigView(), ephemeral=True)
+        await interaction.response.send_message("⚙️ **Painel de Configurações**", view=ConfigView(), ephemeral=True)
 
 # --- Bot e Loop ---
 class MyBot(discord.Client):
@@ -224,14 +243,13 @@ class MyBot(discord.Client):
             check_energy.start()
 
     async def on_ready(self):
-        print(f"✅ Bot online: {self.user}")
+        print(f"✅ Bot online como {self.user}")
 
 client = MyBot()
 
 @client.event
 async def on_message(message):
     if message.author.bot or not isinstance(message.channel, discord.DMChannel): return
-    
     data = load_data()
     config = get_user_config(data, message.author.id)
     

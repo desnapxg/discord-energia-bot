@@ -148,18 +148,30 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    content = message.content.lower()
+    # Garante que responde apenas em DM para não poluir servidores
+    if isinstance(message.channel, discord.DMChannel):
+        content = message.content.lower().strip()
 
-    if content == "!painel":
-        await message.channel.send(embed=create_panel_embed(), view=EnergyView())
+        if content == "!painel":
+            await message.channel.send(embed=create_panel_embed(), view=EnergyView())
+            return
 
-    if content == "!testar":
-        user_id = str(message.author.id)
-        data = load_data()
-        test_finish = datetime.now(timezone.utc) + timedelta(seconds=5)
-        data[user_id] = test_finish.isoformat()
-        save_data(data)
-        await message.channel.send("🧪 **Teste iniciado!** Aguarde 5 segundos.")
+        if content == "!testar":
+            user_id = str(message.author.id)
+            data = load_data()
+            test_finish = datetime.now(timezone.utc) + timedelta(seconds=5)
+            data[user_id] = test_finish.isoformat()
+            save_data(data)
+            await message.channel.send("🧪 **Teste iniciado!** Aguarde 5 segundos.")
+            return
+
+        # Se não for comando, manda o painel de boas-vindas/ajuda
+        embed = discord.Embed(
+            title="👋 Olá! Precisa de ajuda com a energia?",
+            description="Use o painel abaixo para gerenciar sua recarga de Mystery Dungeon:",
+            color=discord.Color.blue()
+        )
+        await message.channel.send(embed=embed, view=EnergyView())
 
 @tasks.loop(seconds=5)
 async def check_energy():
@@ -175,7 +187,6 @@ async def check_energy():
         if now >= finish_time:
             try:
                 user = await client.fetch_user(int(user_id))
-                # --- FRASE ALTERADA AQUI ---
                 await user.send("🔥 **Sua energia chegou em 100!** Hora de fazer alguma Mystery Dungeon! 🎮")
                 await user.send(embed=create_panel_embed(), view=EnergyView())
                 data[user_id] = "FULL"

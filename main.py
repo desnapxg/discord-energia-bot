@@ -130,14 +130,10 @@ class EnergyModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         val = self.energy_input.value.strip()
-        
-        # Trava para aceitar apenas números (isdigit barra o "-")
         if not val.isdigit():
             return await interaction.response.send_message("❌ Digite apenas números inteiros e positivos.", ephemeral=True)
         
         current = int(val)
-        
-        # Mensagem personalizada para valor acima do limite
         if current > self.limit:
             return await interaction.response.send_message(f"❌ Valor inválido. O valor digitado está acima do seu limite atual (**{self.limit}**).", ephemeral=True)
         
@@ -270,7 +266,8 @@ async def check_energy():
                 try:
                     user = await client.fetch_user(int(uid))
                     limit = udata.get("max", DEFAULT_MAX)
-                    await user.send(f"🔥 **Sua energia azul chegou em {limit}!**")
+                    # MENSAGEM FINAL ATUALIZADA AQUI:
+                    await user.send(f"🔥 **Sua energia azul chegou em {limit}. Hora de fazer alguma Mystery Dungeon Azul!**")
                     udata["status"] = "FULL"
                     udata["finish"] = None
                     changed = True

@@ -125,10 +125,9 @@ class EnergyModal(discord.ui.Modal):
         await interaction.response.send_message(msg, ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(self.limit, self.tz_code), view=EnergyView())
 
-# --- Views Secundárias (Configurações) ---
+# --- Views Secundárias ---
 
 class TimezoneOptionsView(discord.ui.View):
-    """View que aparece apenas quando clica em Alterar Fuso"""
     def __init__(self):
         super().__init__(timeout=180)
         select = discord.ui.Select(
@@ -148,12 +147,11 @@ class TimezoneOptionsView(discord.ui.View):
         await interaction.response.send_message(f"✅ Fuso alterado!", ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(user_info["max"], user_info["tz"]), view=EnergyView())
 
-    @discord.ui.button(label="Digitar Manualmente (Outros)", style=discord.ButtonStyle.primary, emoji="⌨️")
+    @discord.ui.button(label="Digitar Manualmente", style=discord.ButtonStyle.primary, emoji="⌨️")
     async def custom_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CustomTimeZoneModal())
 
 class MainConfigView(discord.ui.View):
-    """Menu Inicial de Configurações (Aparece ao clicar na engrenagem)"""
     def __init__(self):
         super().__init__(timeout=180)
 
@@ -163,6 +161,7 @@ class MainConfigView(discord.ui.View):
 
     @discord.ui.button(label="Alterar Fuso Horário", style=discord.ButtonStyle.secondary, emoji="🌐")
     async def go_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Usamos send_message em vez de edit_original_response para evitar conflitos de view
         await interaction.response.send_message("🌐 Escolha seu fuso horário:", view=TimezoneOptionsView(), ephemeral=True)
 
 # --- View Principal ---
@@ -177,6 +176,7 @@ class EnergyView(discord.ui.View):
         config = get_user_config(data, interaction.user.id)
         user_data = data.get(str(interaction.user.id))
         limit = config["max"]
+        
         if not user_data or (isinstance(user_data, dict) and "finish" not in user_data and user_data.get("status") != "FULL"):
             await interaction.response.send_message(f"📊 Sem recarga ativa. Limite: **{limit}**.", ephemeral=True)
         elif isinstance(user_data, dict) and user_data.get("status") == "FULL":
@@ -190,6 +190,8 @@ class EnergyView(discord.ui.View):
                 minutes_left = (finish_time - now).total_seconds() / 60
                 current = max(0, math.floor(limit - (minutes_left / RECHARGE_MINUTES)))
                 await interaction.response.send_message(f"⚡ Status: **{current}/{limit}**", ephemeral=True)
+        
+        # Re-envia o painel fixo
         await interaction.channel.send(embed=create_panel_embed(limit, config["tz"]), view=EnergyView())
 
     @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
@@ -200,7 +202,6 @@ class EnergyView(discord.ui.View):
 
     @discord.ui.button(label="Configurações", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="p:config")
     async def config_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Agora ele chama a MainConfigView que tem os dois botões separados
         await interaction.response.send_message("⚙️ O que deseja configurar?", view=MainConfigView(), ephemeral=True)
 
 # --- Bot ---
@@ -212,10 +213,11 @@ class MyBot(discord.Client):
 
     async def setup_hook(self):
         self.add_view(EnergyView())
-        check_energy.start()
+        if not check_energy.is_running():
+            check_energy.start()
 
     async def on_ready(self):
-        print(f"✅ Bot online: {self.user}")
+        print(f"✅ Bot online como {self.user}")
 
 client = MyBot()
 

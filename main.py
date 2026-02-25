@@ -3,7 +3,6 @@ from discord.ext import tasks
 import os
 import json
 import math
-import re
 from datetime import datetime, timedelta, timezone
 import zoneinfo
 
@@ -69,29 +68,28 @@ class EnergyModal(discord.ui.Modal):
         self.limit, self.tz_code = limit, tz_code
         
         self.energy_input = discord.ui.TextInput(
-            label=f'Energia AZUL atual (0 a {limit})', 
+            label=f'Energia azul atual (0 a {limit})', 
             placeholder='Ex: 58', min_length=1, max_length=3
         )
         self.time_input = discord.ui.TextInput(
-            label='Tempo para o próximo ponto (Min:Seg):', 
-            placeholder='Ex: 12:30 ou 12', default="30:00", min_length=1, max_length=5
+            label='Tempo para recarregar a próxima energia azul:', 
+            placeholder='Ex: 12:30 ou 12', default="29:59", min_length=1, max_length=5
         )
         self.add_item(self.energy_input)
         self.add_item(self.time_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         v_energy = self.energy_input.value.strip()
-        v_time = self.time_input.value.strip().replace(',', ':').replace(' ', ':')
+        # Limpa espaços e normaliza separadores
+        v_time = self.time_input.value.strip().replace(' ', '').replace(',', ':')
         
-        # Validação da energia
         if not v_energy.isdigit():
-            return await interaction.response.send_message("❌ Energia deve ser um número.", ephemeral=True)
+            return await interaction.response.send_message("❌ A energia deve ser um número inteiro.", ephemeral=True)
         
         curr = int(v_energy)
         if curr > self.limit:
-            return await interaction.response.send_message(f"❌ Valor acima do limite (**{self.limit}**).", ephemeral=True)
+            return await interaction.response.send_message(f"❌ Valor inválido. Seu limite atual é **{self.limit}**.", ephemeral=True)
 
-        # Validação do Tempo (Minutos:Segundos)
         m, s = 0, 0
         try:
             if ':' in v_time:
@@ -102,10 +100,12 @@ class EnergyModal(discord.ui.Modal):
                 m = int(v_time)
                 s = 0
         except ValueError:
-            return await interaction.response.send_message("❌ Formato de tempo inválido. Use algo como `12:30` ou `12`.", ephemeral=True)
+            return await interaction.response.send_message("❌ Formato de tempo inválido. Use `minutos:segundos` (ex: 12:30).", ephemeral=True)
 
-        if m > 30 or (m == 30 and s > 0) or s > 59:
-            return await interaction.response.send_message("❌ Tempo inválido (Máximo 30:00).", ephemeral=True)
+        # Validação lógica de tempo (Não pode ser mais que o tempo de 1 carga)
+        total_input_seconds = (m * 60) + s
+        if total_input_seconds > (RECHARGE_MINUTES * 60) or m < 0 or s < 0 or s > 59:
+            return await interaction.response.send_message(f"❌ O tempo não pode exceder {RECHARGE_MINUTES} minutos.", ephemeral=True)
 
         data = load_data()
         user_id = str(interaction.user.id)
@@ -113,11 +113,11 @@ class EnergyModal(discord.ui.Modal):
         
         if curr >= self.limit:
             u_info.update({"status": "FULL", "finish": None})
-            msg = "✅ Sua **energia azul** está cheia!"
+            msg = f"✅ Sua **energia azul** foi definida como cheia (**{self.limit}/{self.limit}**)!"
         else:
-            seconds_for_next = (m * 60) + s
             missing_points = self.limit - curr
-            total_seconds_needed = ((missing_points - 1) * RECHARGE_MINUTES * 60) + seconds_for_next
+            # Cálculo: segundos para a próxima + (pontos restantes - 1) * 30 min
+            total_seconds_needed = total_input_seconds + ((missing_points - 1) * RECHARGE_MINUTES * 60)
             
             finish_time = datetime.now(timezone.utc) + timedelta(seconds=total_seconds_needed)
             u_info.update({"finish": finish_time.isoformat(), "status": "RECHARGING"})
@@ -133,12 +133,13 @@ class EnergyModal(discord.ui.Modal):
         save_data(data)
         await interaction.response.send_message(msg, ephemeral=True)
 
-# --- Classes de View e Bot permanecem as mesmas ---
+# --- Views de Configuração ---
+
 class LimitModal(discord.ui.Modal, title='📏 Limite de Energia Azul 🔹'):
-    limit_input = discord.ui.TextInput(label='Novo limite máximo (Azul):', placeholder='Ex: 120', min_length=1, max_length=3)
+    limit_input = discord.ui.TextInput(label='Novo limite máximo:', placeholder='Ex: 120', min_length=1, max_length=3)
     async def on_submit(self, interaction: discord.Interaction):
         val = self.limit_input.value.strip()
-        if not val.isdigit(): return await interaction.response.send_message("❌ Digite números.", ephemeral=True)
+        if not val.isdigit(): return await interaction.response.send_message("❌ Digite apenas números.", ephemeral=True)
         data = load_data(); user_id = str(interaction.user.id)
         u_info = data.get(user_id, {"max": DEFAULT_MAX, "tz": "America/Sao_Paulo"})
         u_info["max"] = int(val); data[user_id] = u_info; save_data(data)
@@ -148,7 +149,7 @@ class TimezoneOptionsView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
         select = discord.ui.Select(
-            placeholder="Escolha um fuso comum...", 
+            placeholder="Escolha seu fuso horário...", 
             options=[discord.SelectOption(label=name, value=tz) for name, tz in TIMEZONES.items()]
         )
         select.callback = self.tz_callback
@@ -158,66 +159,72 @@ class TimezoneOptionsView(discord.ui.View):
         data = load_data(); user_id = str(interaction.user.id)
         u_info = data.get(user_id, {"max": DEFAULT_MAX, "tz": "America/Sao_Paulo"})
         u_info["tz"] = interaction.data['values'][0]; data[user_id] = u_info; save_data(data)
-        await interaction.response.send_message("✅ Fuso horário alterado!", ephemeral=True)
+        await interaction.response.send_message("✅ Fuso horário atualizado com sucesso!", ephemeral=True)
 
     @discord.ui.button(label="Voltar", style=discord.ButtonStyle.danger, emoji="⬅️")
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="⚙️ Configurações:", view=MainConfigView(), embed=None)
+        await interaction.response.edit_message(content="⚙️ Configurações da Energia Azul:", view=MainConfigView(), embed=None)
 
 class MainConfigView(discord.ui.View):
     def __init__(self): super().__init__(timeout=180)
-    @discord.ui.button(label="Alterar Limite Azul", style=discord.ButtonStyle.secondary, emoji="📏")
+    @discord.ui.button(label="Alterar Limite", style=discord.ButtonStyle.secondary, emoji="📏")
     async def go_limit(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(LimitModal())
-    @discord.ui.button(label="Alterar Fuso Horário", style=discord.ButtonStyle.secondary, emoji="🌐")
+    @discord.ui.button(label="Alterar Fuso", style=discord.ButtonStyle.secondary, emoji="🌐")
     async def go_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="🌐 Escolha seu fuso:", view=TimezoneOptionsView())
+        await interaction.response.edit_message(content="🌐 Selecione a região correta:", view=TimezoneOptionsView())
     @discord.ui.button(label="Voltar ao Início", style=discord.ButtonStyle.danger, emoji="🏠")
     async def back_to_main(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data(); config = get_user_config(data, interaction.user.id)
         await interaction.response.edit_message(content=None, embed=create_panel_embed(config["max"], config["tz"]), view=EnergyView())
 
+# --- View Principal ---
+
 class EnergyView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
 
-    @discord.ui.button(label="Status da Energia Azul", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
+    @discord.ui.button(label="Status da Energia", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data(); user_id = str(interaction.user.id); u_data = data.get(user_id)
         if not u_data or ("finish" not in u_data and u_data.get("status") != "FULL"):
-            return await interaction.response.send_message("Sua energia azul ainda não está sendo monitorada.", ephemeral=True)
+            return await interaction.response.send_message("Você ainda não registrou sua energia.", ephemeral=True)
+        
         limit = u_data.get("max", DEFAULT_MAX)
         if u_data.get("status") == "FULL":
-            return await interaction.response.send_message(f"🔋 Energia azul cheia! (**{limit}/{limit}**)", ephemeral=True)
+            return await interaction.response.send_message(f"🔋 Sua energia azul está cheia! (**{limit}/{limit}**)", ephemeral=True)
         
         finish_time = datetime.fromisoformat(u_data["finish"])
         now = datetime.now(timezone.utc)
-        if now >= finish_time: return await interaction.response.send_message("✨ Energia completada!", ephemeral=True)
+        if now >= finish_time: return await interaction.response.send_message(f"✨ Energia cheia! (**{limit}/{limit}**)", ephemeral=True)
         
         diff = finish_time - now
-        total_seconds_left = diff.total_seconds()
-        current = max(0, limit - math.ceil(total_seconds_left / (RECHARGE_MINUTES * 60)))
-        horas = int(total_seconds_left // 3600)
-        mins = int((total_seconds_left % 3600) // 60)
-        secs = int(total_seconds_left % 60)
-        await interaction.response.send_message(f"🔹 **Energia atual: {current}/{limit}**\n⏳ Falta: `{horas}h {mins}m {secs}s`", ephemeral=True)
+        total_secs = diff.total_seconds()
+        # Cálculo de pontos atuais baseado no tempo restante preciso
+        current = max(0, limit - math.ceil(total_secs / (RECHARGE_MINUTES * 60)))
+        
+        h, m, s = int(total_secs // 3600), int((total_secs % 3600) // 60), int(total_secs % 60)
+        await interaction.response.send_message(f"🔹 **Energia atual: {current}/{limit}**\n⏳ Falta: `{h}h {m}m {s}s` para completar.", ephemeral=True)
 
-    @discord.ui.button(label="Atualizar Energia Azul", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
+    @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
     async def update_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data(); config = get_user_config(data, interaction.user.id)
         await interaction.response.send_modal(EnergyModal(config["max"], config["tz"]))
 
     @discord.ui.button(label="Configurações", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="p:config")
     async def config_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="⚙️ Configurações:", view=MainConfigView(), embed=None)
+        await interaction.response.send_message("⚙️ Painel de Configurações:", view=MainConfigView(), ephemeral=True)
+
+# --- Core do Bot ---
 
 class MyBot(discord.Client):
     def __init__(self):
-        intents = discord.Intents.default(); intents.message_content = True
+        intents = discord.Intents.default()
+        intents.message_content = True
         super().__init__(intents=intents)
     async def setup_hook(self):
         self.add_view(EnergyView())
         if not check_energy.is_running(): check_energy.start()
-    async def on_ready(self): print(f"✅ Bot online como {self.user}")
+    async def on_ready(self): print(f"✅ Bot de Energia Azul pronto: {self.user}")
 
 client = MyBot()
 
@@ -225,10 +232,12 @@ client = MyBot()
 async def on_message(message):
     if message.author.bot or not isinstance(message.channel, discord.DMChannel): return
     data = load_data(); user_id = str(message.author.id); u_info = get_user_config(data, user_id)
+
     if message.content.lower() == "!testar":
         u_info.update({"finish": (datetime.now(timezone.utc) + timedelta(seconds=10)).isoformat(), "status": "RECHARGING"})
-        data[user_id] = u_info; save_data(data); await message.channel.send("🧪 Teste iniciado. 10s...")
+        data[user_id] = u_info; save_data(data); await message.channel.send("🧪 Teste iniciado! Em 10s você receberá o aviso.")
         return 
+
     if u_info.get("last_msg"):
         try:
             old = await message.channel.fetch_message(u_info["last_msg"]); await old.delete()

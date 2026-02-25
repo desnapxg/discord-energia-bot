@@ -6,13 +6,12 @@ import math
 from datetime import datetime, timedelta, timezone
 import zoneinfo
 
-# --- Configurações Gerais ---
+# --- Configurações ---
 TOKEN = os.getenv("TOKEN")
 DEFAULT_MAX = 100 
 RECHARGE_MINUTES = 30
 DATA_FILE = "data.json"
 
-# Fusos Horários para o Menu de Seleção Rápida
 TIMEZONES = {
     "Brasília (UTC-3)": "America/Sao_Paulo",
     "Manaus (UTC-4)": "America/Manaus",
@@ -22,15 +21,14 @@ TIMEZONES = {
     "Açores (UTC-1)": "Atlantic/Azores"
 }
 
-# --- Sistema de Gerenciamento de Dados ---
+# --- Persistência de Dados ---
 def load_data():
     if not os.path.exists(DATA_FILE): return {}
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             content = f.read()
             return json.loads(content) if content else {}
-    except:
-        return {}
+    except: return {}
 
 def save_data(data):
     try:
@@ -50,7 +48,7 @@ def get_user_config(data, user_id):
 
 def create_panel_embed(user_limit, user_tz_code):
     tz_display = next((name for name, tz in TIMEZONES.items() if tz == user_tz_code), user_tz_code)
-    embed = discord.Embed(
+    return discord.Embed(
         title="🎒 Mystery Dungeon - Energia",
         description=(
             f"📍 Fuso Atual: **{tz_display}**\n"
@@ -61,10 +59,8 @@ def create_panel_embed(user_limit, user_tz_code):
         ),
         color=discord.Color.gold()
     )
-    return embed
 
 # --- Modais ---
-
 class CustomTimeZoneModal(discord.ui.Modal, title='📍 Configurar Fuso Horário'):
     tz_input = discord.ui.TextInput(label='Cidade ou Fuso (Continent/City)', placeholder='Ex: Tokyo, Paris, New_York...', min_length=3, max_length=50)
 
@@ -131,7 +127,6 @@ class EnergyModal(discord.ui.Modal):
         await interaction.channel.send(embed=create_panel_embed(self.limit, self.tz_code), view=EnergyView())
 
 # --- Views ---
-
 class ConfigView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
@@ -193,7 +188,6 @@ class EnergyView(discord.ui.View):
         await interaction.response.send_message("⚙️ **Configurações**", view=ConfigView(), ephemeral=True)
 
 # --- Bot ---
-
 class MyBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
@@ -218,7 +212,7 @@ async def on_message(message):
         data[str(message.author.id)] = {"finish": test_finish.isoformat(), "max": config["max"], "tz": config["tz"]}
         save_data(data)
         await message.channel.send("🧪 **Teste iniciado.** Aguarde 10 segundos.")
-        return # Impede de enviar o painel logo abaixo
+        return # Trava vital para evitar duplicação
 
     await message.channel.send(embed=create_panel_embed(config["max"], config["tz"]), view=EnergyView())
 

@@ -26,11 +26,11 @@ def save_data(data):
 
 def create_panel_embed():
     return discord.Embed(
-        title="🎮 Mystery Dungeon - Controle de Energia",
+        title="🎮 Mystery Dungeon - Energia",
         description=(
             "Gerencie sua recarga de energia abaixo.\n\n"
             "⚡ **Atualizar Energia:** Registra quanto você tem agora.\n"
-            "📊 **Ver Status:** Verifica o progresso da recarga."
+            "📊 **Ver Status:** Verifica quanto tempo falta para encher."
         ),
         color=discord.Color.green()
     )
@@ -38,7 +38,7 @@ def create_panel_embed():
 # --- Modal para Digitar a Energia ---
 class EnergyModal(discord.ui.Modal, title='Atualizar Energia'):
     energy_input = discord.ui.TextInput(
-        label='Qual sua energia atual?',
+        label='Qual sua energia atual no jogo?',
         placeholder='Digite de 0 a 100...',
         min_length=1,
         max_length=3,
@@ -51,13 +51,12 @@ class EnergyModal(discord.ui.Modal, title='Atualizar Energia'):
             data = load_data()
 
             if current_energy >= MAX_ENERGY:
-                # Se digitar 100 ou mais, apenas removemos qualquer timer ativo
                 if user_id in data:
                     del data[user_id]
                     save_data(data)
                 
                 await interaction.response.send_message(
-                    "✅ Energia cheia registrada! O timer foi encerrado.", 
+                    "✅ **Energia total registrada!** Como você já está com 100%, não farei contagem agora.", 
                     ephemeral=True
                 )
             else:
@@ -71,15 +70,14 @@ class EnergyModal(discord.ui.Modal, title='Atualizar Energia'):
                 finish_br = finish_time.astimezone(BRASILIA)
                 await interaction.response.send_message(
                     f"⚡ **Energia registrada: {current_energy}**\n"
-                    f"🔋 Ficará cheia às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`", 
+                    f"🔋 Sua energia deve completar às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`", 
                     ephemeral=True
                 )
             
-            # Envia um novo painel para ser sempre o último
             await interaction.channel.send(embed=create_panel_embed(), view=EnergyView())
 
         except ValueError:
-            await interaction.response.send_message("❌ Erro: Digite apenas números.", ephemeral=True)
+            await interaction.response.send_message("❌ Erro: Por favor, use apenas números.", ephemeral=True)
 
 # --- View com Botões Persistentes ---
 class EnergyView(discord.ui.View):
@@ -93,8 +91,8 @@ class EnergyView(discord.ui.View):
 
         if user_id not in data:
             await interaction.response.send_message(
-                "👋 **Nenhum timer ativo.**\n"
-                "Clique em **Atualizar Energia** ⚡ para começar!", 
+                "👋 **Eu ainda não estou acompanhando sua recarga.**\n"
+                "Para começar, clique em **Atualizar Energia** ⚡ e me diga quanto você tem no jogo agora!", 
                 ephemeral=True
             )
         else:
@@ -104,7 +102,7 @@ class EnergyView(discord.ui.View):
             if now >= finish_time:
                 await interaction.response.send_message(
                     "🔋 **Energia 100/100!**\n"
-                    "Sua recarga já terminou.", 
+                    "Sua barra de energia já deve estar cheia no jogo!", 
                     ephemeral=True
                 )
             else:
@@ -114,12 +112,11 @@ class EnergyView(discord.ui.View):
                 finish_br = finish_time.astimezone(BRASILIA)
 
                 await interaction.response.send_message(
-                    f"⚡ Energia atual: **{current_energy}**\n"
-                    f"⌛ Ficará cheia às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`",
+                    f"⚡ Sua energia atual deve estar em aproximadamente **{current_energy}**.\n"
+                    f"⌛ A recarga completa será às: `{finish_br.strftime('%H:%M - %d/%m/%Y')}`",
                     ephemeral=True
                 )
         
-        # Envia o painel novo
         await interaction.channel.send(embed=create_panel_embed(), view=EnergyView())
 
     @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="btn_update")
@@ -162,7 +159,7 @@ async def check_energy():
         if now >= finish_time:
             try:
                 user = await client.fetch_user(int(user_id))
-                await user.send("🔥 **Energia cheia!** Hora de entrar no Mystery Dungeon!")
+                await user.send("🔥 **Energia cheia!** Sua recarga de Mystery Dungeon terminou!")
                 await user.send(embed=create_panel_embed(), view=EnergyView())
                 del data[user_id]
                 changed = True

@@ -60,7 +60,7 @@ def create_panel_embed(user_limit, user_tz_code):
         color=discord.Color.blue()
     )
 
-# --- Navegação e Views de Configuração ---
+# --- Navegação e Views ---
 
 class TimezoneOptionsView(discord.ui.View):
     def __init__(self):
@@ -109,12 +109,14 @@ class MainConfigView(discord.ui.View):
 class LimitModal(discord.ui.Modal, title='📏 Limite de Energia Azul 🔹'):
     limit_input = discord.ui.TextInput(label='Novo limite máximo (Azul):', placeholder='Ex: 120', min_length=1, max_length=3)
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.limit_input.value.isdigit():
-            return await interaction.response.send_message("❌ Digite apenas números.", ephemeral=True)
+        val = self.limit_input.value.strip()
+        if not val.isdigit():
+            return await interaction.response.send_message("❌ Digite apenas números inteiros e positivos.", ephemeral=True)
+        
         data = load_data()
         user_id = str(interaction.user.id)
         u_info = data.get(user_id, {"max": DEFAULT_MAX, "tz": "America/Sao_Paulo"})
-        u_info["max"] = int(self.limit_input.value)
+        u_info["max"] = int(val)
         data[user_id] = u_info
         save_data(data)
         await interaction.response.send_message(f"✅ Limite azul alterado para **{u_info['max']}**!", ephemeral=True)
@@ -123,14 +125,22 @@ class EnergyModal(discord.ui.Modal):
     def __init__(self, limit, tz_code):
         super().__init__(title="⚡ Atualizar Energia Azul 🔹")
         self.limit, self.tz_code = limit, tz_code
-        self.energy_input = discord.ui.TextInput(label=f'Energia AZUL atual (0 a {limit})', min_length=1, max_length=3)
+        self.energy_input = discord.ui.TextInput(label=f'Energia AZUL atual (0 a {limit})', placeholder='Digite sua energia atual...', min_length=1, max_length=3)
         self.add_item(self.energy_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.energy_input.value.isdigit():
-            return await interaction.response.send_message("❌ Digite apenas números.", ephemeral=True)
+        val = self.energy_input.value.strip()
         
-        current = int(self.energy_input.value)
+        # Trava para aceitar apenas números (isdigit barra o "-")
+        if not val.isdigit():
+            return await interaction.response.send_message("❌ Digite apenas números inteiros e positivos.", ephemeral=True)
+        
+        current = int(val)
+        
+        # Mensagem personalizada para valor acima do limite
+        if current > self.limit:
+            return await interaction.response.send_message(f"❌ Valor inválido. O valor digitado está acima do seu limite atual (**{self.limit}**).", ephemeral=True)
+        
         data = load_data()
         user_id = str(interaction.user.id)
         u_info = data.get(user_id, {"max": self.limit, "tz": self.tz_code})
@@ -166,9 +176,8 @@ class EnergyView(discord.ui.View):
         user_id = str(interaction.user.id)
         u_data = data.get(user_id)
         
-        # Caso: Novo usuário ou sem registro ativo
-        if not u_data or (u_data.get("status") != "FULL" and not u_data.get("finish")):
-            return await interaction.response.send_message("Sua energia azul está em 0!", ephemeral=True)
+        if not u_data or ("finish" not in u_data and u_data.get("status") != "FULL"):
+            return await interaction.response.send_message("Sua energia azul ainda não está sendo monitorada.", ephemeral=True)
         
         limit = u_data.get("max", DEFAULT_MAX)
         if u_data.get("status") == "FULL":
@@ -230,7 +239,6 @@ async def on_message(message):
     user_id = str(message.author.id)
     u_info = get_user_config(data, user_id)
 
-    # --- COMANDO DE TESTE ---
     if message.content.lower() == "!testar":
         test_finish = datetime.now(timezone.utc) + timedelta(seconds=10)
         u_info.update({"finish": test_finish.isoformat(), "status": "RECHARGING"})
@@ -239,7 +247,6 @@ async def on_message(message):
         await message.channel.send("🧪 **Teste iniciado.** Você receberá um aviso em aproximadamente 10 segundos.")
         return 
 
-    # --- LÓGICA DO MENU (Auto-Limpeza) ---
     if u_info.get("last_msg"):
         try:
             old_msg = await message.channel.fetch_message(u_info["last_msg"])

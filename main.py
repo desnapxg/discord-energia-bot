@@ -61,6 +61,56 @@ def create_panel_embed(user_limit, user_tz_code):
         color=discord.Color.blue()
     )
 
+# --- Sub-Views (Navegação) ---
+
+class TimezoneOptionsView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        select = discord.ui.Select(
+            placeholder="Escolha um fuso comum...", 
+            options=[discord.SelectOption(label=name, value=tz) for name, tz in TIMEZONES.items()],
+            row=0
+        )
+        select.callback = self.tz_callback
+        self.add_item(select)
+
+    async def tz_callback(self, interaction: discord.Interaction):
+        data = load_data()
+        user_id = str(interaction.user.id)
+        user_info = get_user_config(data, user_id)
+        user_info["tz"] = interaction.data['values'][0]
+        data[user_id] = user_info
+        save_data(data)
+        await interaction.response.send_message(f"✅ Fuso de **energia azul** alterado!", ephemeral=True)
+        # Atualiza a mensagem principal após a escolha
+        await interaction.channel.send(embed=create_panel_embed(user_info["max"], user_info["tz"]), view=EnergyView())
+
+    @discord.ui.button(label="Digitar Manualmente", style=discord.ButtonStyle.primary, emoji="⌨️", row=1)
+    async def custom_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CustomTimeZoneModal())
+
+    @discord.ui.button(label="Voltar", style=discord.ButtonStyle.danger, emoji="⬅️", row=1)
+    async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="⚙️ Configurações da **Energia Azul**:", embed=None, view=MainConfigView())
+
+class MainConfigView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @discord.ui.button(label="Alterar Limite Azul", style=discord.ButtonStyle.secondary, emoji="📏")
+    async def go_limit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(LimitModal())
+
+    @discord.ui.button(label="Alterar Fuso Horário", style=discord.ButtonStyle.secondary, emoji="🌐")
+    async def go_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="🌐 Escolha seu fuso horário:", view=TimezoneOptionsView())
+
+    @discord.ui.button(label="Voltar ao Início", style=discord.ButtonStyle.danger, emoji="🏠")
+    async def back_to_main(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = load_data()
+        config = get_user_config(data, interaction.user.id)
+        await interaction.response.edit_message(content=None, embed=create_panel_embed(config["max"], config["tz"]), view=EnergyView())
+
 # --- Modais ---
 
 class CustomTimeZoneModal(discord.ui.Modal, title='📍 Configurar Fuso Horário'):
@@ -136,44 +186,7 @@ class EnergyModal(discord.ui.Modal):
         await interaction.response.send_message(msg, ephemeral=True)
         await interaction.channel.send(embed=create_panel_embed(self.limit, self.tz_code), view=EnergyView())
 
-# --- Views ---
-
-class TimezoneOptionsView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=180)
-        select = discord.ui.Select(
-            placeholder="Escolha um fuso comum...", 
-            options=[discord.SelectOption(label=name, value=tz) for name, tz in TIMEZONES.items()],
-            row=0
-        )
-        select.callback = self.tz_callback
-        self.add_item(select)
-
-    async def tz_callback(self, interaction: discord.Interaction):
-        data = load_data()
-        user_id = str(interaction.user.id)
-        user_info = get_user_config(data, user_id)
-        user_info["tz"] = interaction.data['values'][0]
-        data[user_id] = user_info
-        save_data(data)
-        await interaction.response.send_message(f"✅ Fuso de **energia azul** alterado!", ephemeral=True)
-        await interaction.channel.send(embed=create_panel_embed(user_info["max"], user_info["tz"]), view=EnergyView())
-
-    @discord.ui.button(label="Digitar Manualmente (Outros)", style=discord.ButtonStyle.primary, emoji="⌨️", row=1)
-    async def custom_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(CustomTimeZoneModal())
-
-class MainConfigView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=180)
-
-    @discord.ui.button(label="Alterar Limite Azul", style=discord.ButtonStyle.secondary, emoji="📏")
-    async def go_limit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(LimitModal())
-
-    @discord.ui.button(label="Alterar Fuso Horário", style=discord.ButtonStyle.secondary, emoji="🌐")
-    async def go_tz(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🌐 Escolha seu fuso horário:", view=TimezoneOptionsView(), ephemeral=True)
+# --- View Principal ---
 
 class EnergyView(discord.ui.View):
     def __init__(self):

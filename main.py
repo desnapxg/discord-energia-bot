@@ -153,19 +153,15 @@ async def on_message(message):
     if content == "!painel":
         await message.channel.send(embed=create_panel_embed(), view=EnergyView())
 
-    # --- COMANDO DE TESTE ---
     if content == "!testar":
         user_id = str(message.author.id)
         data = load_data()
-        
-        # Define que a energia acaba em 5 segundos a partir de agora
         test_finish = datetime.now(timezone.utc) + timedelta(seconds=5)
         data[user_id] = test_finish.isoformat()
         save_data(data)
-        
-        await message.channel.send("🧪 **Teste iniciado!** Em alguns segundos você deve receber o aviso de energia cheia na sua DM.")
+        await message.channel.send("🧪 **Teste iniciado!** Aguarde 5 segundos.")
 
-@tasks.loop(seconds=5) # Reduzi para 5 segundos para o teste ser mais rápido
+@tasks.loop(seconds=5)
 async def check_energy():
     data = load_data()
     now = datetime.now(timezone.utc)
@@ -179,7 +175,8 @@ async def check_energy():
         if now >= finish_time:
             try:
                 user = await client.fetch_user(int(user_id))
-                await user.send("🔥 **Energia cheia!** Sua recarga de Mystery Dungeon terminou!")
+                # --- FRASE ALTERADA AQUI ---
+                await user.send("🔥 **Sua energia chegou em 100!** Hora de fazer alguma Mystery Dungeon! 🎮")
                 await user.send(embed=create_panel_embed(), view=EnergyView())
                 data[user_id] = "FULL"
                 changed = True

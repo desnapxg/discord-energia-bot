@@ -118,9 +118,11 @@ class EnergyModal(discord.ui.Modal):
             
             local_tz = zoneinfo.ZoneInfo(self.tz_code)
             finish_local = finish_time.astimezone(local_tz)
+            
+            # MENSAGEM DE ATUALIZAÇÃO ALTERADA CONFORME SOLICITADO
             msg = (
                 f"🔹 **Energia azul atualizada: {curr}/{self.limit}**\n"
-                f"⏳ Falta: `{m}m {s}s` para o próximo ponto.\n"
+                f"⏳ Falta: `{m}m {s}s` para recarregar a próxima energia\n"
                 f"⏰ Ficará cheia às: `{finish_local.strftime('%H:%M:%S')}` em `{finish_local.strftime('%d/%m')}`"
             )
             
@@ -155,19 +157,16 @@ class EnergyView(discord.ui.View):
         diff = finish_time - now
         total_secs = diff.total_seconds()
         
-        # Pontos atuais
         pontos_faltantes = math.ceil(total_secs / (RECHARGE_MINUTES * 60))
         current = max(0, limit - pontos_faltantes)
         
-        # Formatação do Cronômetro (Falta Xh Ym Zs)
         h, rem = divmod(int(total_secs), 3600)
         m, s = divmod(rem, 60)
         
-        # Formatação do Horário Final (Relógio local)
         local_tz = zoneinfo.ZoneInfo(tz_code)
         finish_local = finish_time.astimezone(local_tz)
         
-        # Resposta com os 3 campos solicitados
+        # MENSAGEM DE STATUS COM OS 3 CAMPOS
         await interaction.response.send_message(
             f"🔹 **Energia atual: {current}/{limit}**\n"
             f"⏳ Falta: `{h}h {m}m {s}s` para completar.\n"
@@ -184,7 +183,7 @@ class EnergyView(discord.ui.View):
     async def config_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("⚙️ Configurações:", view=MainConfigView(), ephemeral=True)
 
-# --- Classes de Configuração ---
+# --- Classes de Suporte ---
 
 class MainConfigView(discord.ui.View):
     def __init__(self): super().__init__(timeout=180)
@@ -219,8 +218,6 @@ class TimezoneOptionsView(discord.ui.View):
         data[user_id] = {**config, "tz": interaction.data['values'][0]}
         save_data(data); await interaction.response.send_message("✅ Fuso horário atualizado!", ephemeral=True)
 
-# --- Bot Core ---
-
 class MyBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default(); intents.message_content = True
@@ -236,7 +233,6 @@ client = MyBot()
 async def on_message(message):
     if message.author.bot or not isinstance(message.channel, discord.DMChannel): return
     data = load_data(); user_id = str(message.author.id); config = get_user_config(data, user_id)
-    
     if message.content.lower() == "!testar":
         await message.channel.send("🧪 **Simulação de teste:** Você receberá o aviso em 10 segundos (sem alterar seus dados reais).")
         async def mock_notification():
@@ -246,7 +242,6 @@ async def on_message(message):
         import asyncio
         asyncio.create_task(mock_notification())
         return 
-        
     if config.get("last_msg"):
         try:
             old = await message.channel.fetch_message(config["last_msg"]); await old.delete()

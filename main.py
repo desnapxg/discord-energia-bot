@@ -6,7 +6,7 @@ import math
 from datetime import datetime, timedelta, timezone
 import zoneinfo
 
-# --- Configurações ---
+# --- Configurações Gerais ---
 TOKEN = os.getenv("TOKEN")
 DEFAULT_MAX = 100 
 RECHARGE_MINUTES = 30
@@ -60,7 +60,7 @@ def create_panel_embed(user_limit, user_tz_code):
         color=discord.Color.blue()
     )
 
-# --- Navegação e Modais ---
+# --- Navegação e Views de Configuração ---
 
 class TimezoneOptionsView(discord.ui.View):
     def __init__(self):
@@ -76,7 +76,7 @@ class TimezoneOptionsView(discord.ui.View):
     async def tz_callback(self, interaction: discord.Interaction):
         data = load_data()
         user_id = str(interaction.user.id)
-        u_info = data.get(user_id, {})
+        u_info = data.get(user_id, {"max": DEFAULT_MAX, "tz": "America/Sao_Paulo"})
         u_info["tz"] = interaction.data['values'][0]
         data[user_id] = u_info
         save_data(data)
@@ -104,6 +104,8 @@ class MainConfigView(discord.ui.View):
         config = get_user_config(data, interaction.user.id)
         await interaction.response.edit_message(content=None, embed=create_panel_embed(config["max"], config["tz"]), view=EnergyView())
 
+# --- Modais ---
+
 class LimitModal(discord.ui.Modal, title='📏 Limite de Energia Azul 🔹'):
     limit_input = discord.ui.TextInput(label='Novo limite máximo (Azul):', placeholder='Ex: 120', min_length=1, max_length=3)
     async def on_submit(self, interaction: discord.Interaction):
@@ -111,7 +113,7 @@ class LimitModal(discord.ui.Modal, title='📏 Limite de Energia Azul 🔹'):
             return await interaction.response.send_message("❌ Digite apenas números.", ephemeral=True)
         data = load_data()
         user_id = str(interaction.user.id)
-        u_info = data.get(user_id, {"tz": "America/Sao_Paulo"})
+        u_info = data.get(user_id, {"max": DEFAULT_MAX, "tz": "America/Sao_Paulo"})
         u_info["max"] = int(self.limit_input.value)
         data[user_id] = u_info
         save_data(data)
@@ -144,8 +146,8 @@ class EnergyModal(discord.ui.Modal):
             local_tz = zoneinfo.ZoneInfo(self.tz_code)
             finish_local = finish_time.astimezone(local_tz)
             msg = (
-                f"🔹 **Energia azul registrada: {current}/{self.limit}**\n"
-                f"⏰ Cheia às: `{finish_local.strftime('%H:%M')}` em `{finish_local.strftime('%d/%m/%Y')}`"
+                f"🔹 **Energia azul atualizada: {current}/{self.limit}**\n"
+                f"⏰ Ficará cheia às: `{finish_local.strftime('%H:%M')}` em `{finish_local.strftime('%d/%m/%Y')}`"
             )
             
         data[user_id] = u_info
@@ -164,8 +166,9 @@ class EnergyView(discord.ui.View):
         user_id = str(interaction.user.id)
         u_data = data.get(user_id)
         
-        if not u_data or "finish" not in u_data and u_data.get("status") != "FULL":
-            return await interaction.response.send_message("Nenhum dado encontrado. Atualize sua energia!", ephemeral=True)
+        # Caso: Novo usuário ou sem registro ativo
+        if not u_data or (u_data.get("status") != "FULL" and not u_data.get("finish")):
+            return await interaction.response.send_message("Sua energia azul está em 0!", ephemeral=True)
         
         limit = u_data.get("max", DEFAULT_MAX)
         if u_data.get("status") == "FULL":
@@ -180,11 +183,15 @@ class EnergyView(discord.ui.View):
             diff = finish_time - now
             minutes_left = diff.total_seconds() / 60
             current = max(0, math.floor(limit - (minutes_left / RECHARGE_MINUTES)))
+            
+            if current == 0:
+                return await interaction.response.send_message("Sua energia azul está em 0!", ephemeral=True)
+
             horas = int(minutes_left // 60)
             mins = int(minutes_left % 60)
             await interaction.response.send_message(
                 f"🔹 **Energia azul atual: {current}/{limit}**\n"
-                f"⏳ Falta: `{horas}h {mins}m` para completar.", ephemeral=True
+                f"⏳ Falta: `{horas}h {mins}m` para ficar cheia.", ephemeral=True
             )
 
     @discord.ui.button(label="Atualizar Energia Azul", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
@@ -223,17 +230,24 @@ async def on_message(message):
     user_id = str(message.author.id)
     u_info = get_user_config(data, user_id)
 
-    # Limpeza de mensagens antigas
+    # --- COMANDO DE TESTE ---
+    if message.content.lower() == "!testar":
+        test_finish = datetime.now(timezone.utc) + timedelta(seconds=10)
+        u_info.update({"finish": test_finish.isoformat(), "status": "RECHARGING"})
+        data[user_id] = u_info
+        save_data(data)
+        await message.channel.send("🧪 **Teste iniciado.** Você receberá um aviso em aproximadamente 10 segundos.")
+        return 
+
+    # --- LÓGICA DO MENU (Auto-Limpeza) ---
     if u_info.get("last_msg"):
         try:
             old_msg = await message.channel.fetch_message(u_info["last_msg"])
             await old_msg.delete()
         except: pass
 
-    # Envia novo menu
     new_msg = await message.channel.send(embed=create_panel_embed(u_info["max"], u_info["tz"]), view=EnergyView())
     
-    # Atualiza ID da mensagem no banco
     u_info["last_msg"] = new_msg.id
     data[user_id] = u_info
     save_data(data)
@@ -256,4 +270,5 @@ async def check_energy():
                 except: pass
     if changed: save_data(data)
 
-client.run(TOKEN)
+if __name__ == "__main__":
+    client.run(TOKEN)

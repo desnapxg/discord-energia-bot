@@ -21,7 +21,6 @@ TIMEZONES = {
     "Açores (UTC-1)": "Atlantic/Azores"
 }
 
-# --- Sistema de Dados ---
 def load_data():
     if not os.path.exists(DATA_FILE): return {}
     try:
@@ -56,8 +55,6 @@ def create_panel_embed(user_limit, user_tz_code):
         ),
         color=discord.Color.blue()
     )
-
-# --- Modais ---
 
 class EnergyModal(discord.ui.Modal):
     def __init__(self, limit, tz_code):
@@ -112,14 +109,10 @@ class EnergyModal(discord.ui.Modal):
         else:
             pontos_faltantes = self.limit - curr
             segundos_totais = total_next_seconds + ((pontos_faltantes - 1) * RECHARGE_MINUTES * 60)
-            
             finish_time = datetime.now(timezone.utc) + timedelta(seconds=segundos_totais)
             data[user_id] = {**config, "finish": finish_time.isoformat(), "status": "RECHARGING"}
-            
             local_tz = zoneinfo.ZoneInfo(self.tz_code)
             finish_local = finish_time.astimezone(local_tz)
-            
-            # MENSAGEM DE ATUALIZAÇÃO ALTERADA CONFORME SOLICITADO
             msg = (
                 f"🔹 **Energia azul atualizada: {curr}/{self.limit}**\n"
                 f"⏳ Falta: `{m}m {s}s` para recarregar a próxima energia\n"
@@ -129,12 +122,10 @@ class EnergyModal(discord.ui.Modal):
         save_data(data)
         await interaction.response.send_message(msg, ephemeral=True)
 
-# --- View Principal ---
-
 class EnergyView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
 
-    @discord.ui.button(label="Status da Energia", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="p:status")
+    @discord.ui.button(label="Status da Energia", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="persistent:status")
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data(); user_id = str(interaction.user.id); u_data = data.get(user_id)
         if not u_data or u_data.get("status") is None:
@@ -153,20 +144,15 @@ class EnergyView(discord.ui.View):
         now = datetime.now(timezone.utc)
         if now >= finish_time: return await interaction.response.send_message(f"✨ Energia cheia! ({limit}/{limit})", ephemeral=True)
         
-        # Cálculos de tempo restante
         diff = finish_time - now
         total_secs = diff.total_seconds()
-        
         pontos_faltantes = math.ceil(total_secs / (RECHARGE_MINUTES * 60))
         current = max(0, limit - pontos_faltantes)
-        
         h, rem = divmod(int(total_secs), 3600)
         m, s = divmod(rem, 60)
-        
         local_tz = zoneinfo.ZoneInfo(tz_code)
         finish_local = finish_time.astimezone(local_tz)
         
-        # MENSAGEM DE STATUS COM OS 3 CAMPOS
         await interaction.response.send_message(
             f"🔹 **Energia atual: {current}/{limit}**\n"
             f"⏳ Falta: `{h}h {m}m {s}s` para completar.\n"
@@ -174,16 +160,14 @@ class EnergyView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="p:update")
+    @discord.ui.button(label="Atualizar Energia", style=discord.ButtonStyle.success, emoji="⚡", custom_id="persistent:update")
     async def update_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data(); config = get_user_config(data, interaction.user.id)
         await interaction.response.send_modal(EnergyModal(config["max"], config["tz"]))
 
-    @discord.ui.button(label="Configurações", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="p:config")
+    @discord.ui.button(label="Configurações", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="persistent:config")
     async def config_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("⚙️ Configurações:", view=MainConfigView(), ephemeral=True)
-
-# --- Classes de Suporte ---
 
 class MainConfigView(discord.ui.View):
     def __init__(self): super().__init__(timeout=180)
@@ -234,11 +218,11 @@ async def on_message(message):
     if message.author.bot or not isinstance(message.channel, discord.DMChannel): return
     data = load_data(); user_id = str(message.author.id); config = get_user_config(data, user_id)
     if message.content.lower() == "!testar":
-        await message.channel.send("🧪 **Simulação de teste:** Você receberá o aviso em 10 segundos (sem alterar seus dados reais).")
+        await message.channel.send("🧪 Simulação de teste iniciada...")
         async def mock_notification():
             import asyncio
             await asyncio.sleep(10)
-            await message.author.send(f"🔥 **[TESTE] Sua energia azul chegou em {config.get('max')}. Hora de fazer alguma Mystery Dungeon Azul!**")
+            await message.author.send(f"🔥 **[TESTE] Sua energia azul chegou em {config.get('max')}.**")
         import asyncio
         asyncio.create_task(mock_notification())
         return 
@@ -257,7 +241,7 @@ async def check_energy():
             if now >= datetime.fromisoformat(udata["finish"]):
                 try:
                     user = await client.fetch_user(int(uid))
-                    await user.send(f"🔥 **Sua energia azul chegou em {udata.get('max')}. Hora de fazer alguma Mystery Dungeon Azul!**")
+                    await user.send(f"🔥 **Sua energia azul chegou em {udata.get('max')}. Hora de Mystery Dungeon!**")
                     udata["status"] = "FULL"; udata["finish"] = None; changed = True
                 except: pass
     if changed: save_data(data)

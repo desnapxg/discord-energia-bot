@@ -9,7 +9,7 @@ import zoneinfo
 # --- Configurações Gerais ---
 TOKEN = os.getenv("TOKEN")
 DEFAULT_MAX = 100 
-DEFAULT_RECHARGE_SECONDS = 1800  # 30 minutos padrão
+DEFAULT_RECHARGE_SECONDS = 1800
 DATA_FILE = "data.json"
 
 TIMEZONES = {
@@ -53,18 +53,17 @@ def create_panel_embed(user_limit, user_tz_code, recharge):
     return discord.Embed(
         title="🎒 Mystery Dungeon - Energia Azul 🔹",
         description=(
-            f"📍 Fuso Atual: **{tz_display}**\n"
+            f"📍 Fuso: **{tz_display}**\n"
             f"🔋 Limite: **{user_limit}**\n"
-            f"⏱️ Recarga: **{format_recharge(recharge)}**\n\n"
-            "⚡ Atualizar Energia\n"
-            "🔍 Ver Status\n"
-            "⚙️ Configurações"
+            f"⏱️ Recarga: **{format_recharge(recharge)}**"
         ),
         color=discord.Color.blue()
     )
 
+# ---------------- MODAIS ----------------
+
 class RechargeModal(discord.ui.Modal, title='⏱️ Tempo de Recarga'):
-    time_input = discord.ui.TextInput(label='Novo tempo (mm:ss ou mmss)', placeholder='Ex: 25:30')
+    time_input = discord.ui.TextInput(label='Novo tempo (mm:ss)', placeholder='Ex: 25:30')
 
     async def on_submit(self, interaction: discord.Interaction):
         v = self.time_input.value.replace(":", "")
@@ -78,6 +77,7 @@ class RechargeModal(discord.ui.Modal, title='⏱️ Tempo de Recarga'):
             return await interaction.response.send_message("❌ Segundos inválidos.", ephemeral=True)
 
         total = m * 60 + s
+
         data = load_data()
         uid = str(interaction.user.id)
         config = get_user_config(data, uid)
@@ -85,15 +85,15 @@ class RechargeModal(discord.ui.Modal, title='⏱️ Tempo de Recarga'):
         data[uid] = {**config, "recharge": total}
         save_data(data)
 
-        await interaction.response.send_message(f"✅ Novo tempo: {m}m {s}s", ephemeral=True)
+        await interaction.response.send_message(f"✅ Tempo atualizado para {m}m {s}s", ephemeral=True)
 
 class EnergyModal(discord.ui.Modal):
     def __init__(self, limit, tz_code, recharge):
         super().__init__(title="⚡ Atualizar Energia")
         self.limit, self.tz_code, self.recharge = limit, tz_code, recharge
 
-        self.energy_input = discord.ui.TextInput(label=f'Energia atual (0 a {limit})')
-        self.time_input = discord.ui.TextInput(label='Tempo da próxima (mm:ss)', placeholder='Ex: 25:30')
+        self.energy_input = discord.ui.TextInput(label=f'Energia (0 a {limit})')
+        self.time_input = discord.ui.TextInput(label='Tempo próxima (mm:ss)')
 
         self.add_item(self.energy_input)
         self.add_item(self.time_input)
@@ -132,10 +132,13 @@ class EnergyModal(discord.ui.Modal):
         save_data(data)
         await interaction.response.send_message(msg, ephemeral=True)
 
-class EnergyView(discord.ui.View):
-    def __init__(self): super().__init__(timeout=None)
+# ---------------- VIEW ----------------
 
-    @discord.ui.button(label="Status", style=discord.ButtonStyle.primary)
+class EnergyView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Status", style=discord.ButtonStyle.primary, custom_id="btn_status")
     async def status(self, interaction: discord.Interaction, button):
         data = load_data()
         config = get_user_config(data, interaction.user.id)
@@ -155,22 +158,25 @@ class EnergyView(discord.ui.View):
         diff = finish - now
         await interaction.response.send_message(f"⏳ Falta {diff}", ephemeral=True)
 
-    @discord.ui.button(label="Atualizar", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Atualizar", style=discord.ButtonStyle.success, custom_id="btn_update")
     async def update(self, interaction: discord.Interaction, button):
         data = load_data()
         config = get_user_config(data, interaction.user.id)
         await interaction.response.send_modal(EnergyModal(config["max"], config["tz"], config["recharge"]))
 
-    @discord.ui.button(label="Config", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Config", style=discord.ButtonStyle.secondary, custom_id="btn_config")
     async def config(self, interaction: discord.Interaction, button):
         await interaction.response.send_message(view=ConfigView(), ephemeral=True)
 
 class ConfigView(discord.ui.View):
-    def __init__(self): super().__init__(timeout=180)
+    def __init__(self):
+        super().__init__(timeout=180)
 
     @discord.ui.button(label="Tempo", style=discord.ButtonStyle.secondary)
     async def recharge(self, interaction: discord.Interaction, button):
         await interaction.response.send_modal(RechargeModal())
+
+# ---------------- BOT ----------------
 
 class MyBot(discord.Client):
     def __init__(self):
@@ -179,12 +185,11 @@ class MyBot(discord.Client):
         super().__init__(intents=intents)
 
     async def setup_hook(self):
-        self.add_view(EnergyView())
         if not check_energy.is_running():
             check_energy.start()
 
     async def on_ready(self):
-        print(f"Online: {self.user}")
+        print(f"✅ Online: {self.user}")
 
 client = MyBot()
 
